@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clipmark</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  grid-template-columns: 260px 1fr;
+}
+header {
+  grid-column: 1 / -1;
+  background: #16213e;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border-bottom: 1px solid #0f3460;
+}
+header h1 { font-size: 18px; color: #e94560; white-space: nowrap; }
+#search-bar {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  max-width: 500px;
+}
+#search-input {
+  flex: 1;
+  padding: 6px 12px;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-size: 14px;
+}
+#search-input::placeholder { color: #666; }
+button {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  background: #0f3460;
+  color: #e0e0e0;
+}
+button:hover { background: #533483; }
+button.accent { background: #e94560; }
+button.accent:hover { background: #c73e55; }
+button.sm { padding: 3px 8px; font-size: 12px; }
+
+/* Sidebar */
+#sidebar {
+  background: #16213e;
+  overflow-y: auto;
+  padding: 8px;
+  border-right: 1px solid #0f3460;
+  font-size: 13px;
+}
+#sidebar details { margin-left: 4px; }
+#sidebar summary {
+  cursor: pointer;
+  padding: 3px 4px;
+  border-radius: 3px;
+  user-select: none;
+}
+#sidebar summary:hover { background: #0f3460; }
+#sidebar ul { list-style: none; margin-left: 8px; }
+#sidebar .video-item {
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#sidebar .video-item:hover { background: #533483; }
+#sidebar .video-item.active { background: #0f3460; }
+
+/* Main */
+#main {
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+video {
+  width: 100%;
+  max-height: 55vh;
+  background: #000;
+  border-radius: 6px;
+}
+#no-video {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
+  color: #666;
+  font-size: 16px;
+  border: 1px dashed #333;
+  border-radius: 6px;
+}
+
+/* Controls */
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+#controls .time-display {
+  font-family: "SF Mono", "Menlo", monospace;
+  font-size: 14px;
+  color: #e94560;
+  min-width: 50px;
+}
+#controls input[type="text"], #controls textarea {
+  padding: 6px 10px;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-size: 13px;
+}
+#tags-input { width: 220px; }
+#note-input { width: 300px; resize: none; height: 32px; font-family: inherit; }
+
+/* Clips list */
+#clips-section h3 { font-size: 14px; color: #888; margin-bottom: 6px; }
+.clip-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #16213e;
+  border-radius: 5px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.clip-time {
+  font-family: "SF Mono", "Menlo", monospace;
+  color: #e94560;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.clip-time:hover { text-decoration: underline; }
+.clip-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.tag-badge {
+  background: #0f3460;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+.clip-note { color: #999; font-size: 12px; flex: 1; }
+.clip-actions { margin-left: auto; }
+
+/* Search results */
+#search-results {
+  display: none;
+  background: #16213e;
+  border-radius: 6px;
+  padding: 12px;
+}
+#search-results h3 { font-size: 14px; color: #888; margin-bottom: 8px; }
+.search-result {
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+.search-result:hover { background: #0f3460; }
+.search-result .sr-file { color: #888; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>CLIPMARK</h1>
+  <div id="search-bar">
+    <input type="text" id="search-input" placeholder="Search clips by tag..." onkeydown="if(event.key==='Enter')searchClips()">
+    <button onclick="searchClips()">Search</button>
+    <button onclick="clearSearch()">Clear</button>
+  </div>
+</header>
+
+<div id="sidebar"></div>
+
+<div id="main">
+  <div id="no-video">Select a video from the sidebar</div>
+  <video id="player" controls style="display:none"></video>
+
+  <div id="controls" style="display:none">
+    <button onclick="markStart()">Mark Start</button>
+    <span id="start-display" class="time-display">--:--</span>
+    <button onclick="markEnd()">Mark End</button>
+    <span id="end-display" class="time-display">--:--</span>
+    <input type="text" id="tags-input" placeholder="Tags (comma-separated)">
+    <textarea id="note-input" placeholder="Note..."></textarea>
+    <button class="accent" onclick="saveClip()">Save Clip</button>
+  </div>
+
+  <div id="clips-section" style="display:none">
+    <h3>Clips</h3>
+    <div id="clips-list"></div>
+  </div>
+
+  <div id="search-results">
+    <h3>Search Results</h3>
+    <div id="results-list"></div>
+  </div>
+</div>
+
+<script>
+let currentVideoPath = null;
+let clipStart = null;
+let clipEnd = null;
+let allAnnotations = { videos: [] };
+
+const player = document.getElementById("player");
+const sidebar = document.getElementById("sidebar");
+
+function encodePath(p) {
+  return p.split("/").map(encodeURIComponent).join("/");
+}
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+}
+
+function parseTime(str) {
+  const parts = str.split(":");
+  return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+}
+
+// --- Tree ---
+function renderTree(node, parentEl) {
+  if (node.children.length === 0 && node.videos.length === 0) return;
+  const details = document.createElement("details");
+  const summary = document.createElement("summary");
+  summary.textContent = node.name;
+  details.appendChild(summary);
+  node.children.forEach(child => renderTree(child, details));
+  if (node.videos.length) {
+    const ul = document.createElement("ul");
+    node.videos.forEach(v => {
+      const li = document.createElement("li");
+      li.textContent = v.name;
+      li.className = "video-item";
+      li.title = v.path;
+      li.dataset.path = v.path;
+      li.onclick = () => loadVideo(v.path);
+      ul.appendChild(li);
+    });
+    details.appendChild(ul);
+  }
+  parentEl.appendChild(details);
+}
+
+// --- Video ---
+function loadVideo(path) {
+  currentVideoPath = path;
+  clipStart = null;
+  clipEnd = null;
+  document.getElementById("start-display").textContent = "--:--";
+  document.getElementById("end-display").textContent = "--:--";
+  document.getElementById("tags-input").value = "";
+  document.getElementById("note-input").value = "";
+
+  document.getElementById("no-video").style.display = "none";
+  player.style.display = "block";
+  document.getElementById("controls").style.display = "flex";
+  document.getElementById("clips-section").style.display = "block";
+
+  player.src = "/video/" + encodePath(path);
+  player.load();
+
+  document.querySelectorAll(".video-item").forEach(el => {
+    el.classList.toggle("active", el.dataset.path === path);
+  });
+
+  renderClips();
+}
+
+// --- Clip marking ---
+function markStart() {
+  if (!currentVideoPath) return;
+  clipStart = player.currentTime;
+  document.getElementById("start-display").textContent = formatTime(clipStart);
+}
+
+function markEnd() {
+  if (!currentVideoPath) return;
+  clipEnd = player.currentTime;
+  document.getElementById("end-display").textContent = formatTime(clipEnd);
+}
+
+async function saveClip() {
+  if (clipStart === null || clipEnd === null) {
+    alert("Mark both start and end times first.");
+    return;
+  }
+  const tags = document.getElementById("tags-input").value
+    .split(",").map(t => t.trim()).filter(Boolean);
+  const note = document.getElementById("note-input").value.trim();
+
+  await fetch("/api/annotations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      file: currentVideoPath,
+      clip: { start: formatTime(clipStart), end: formatTime(clipEnd), tags, note }
+    })
+  });
+
+  await loadAnnotations();
+  renderClips();
+
+  clipStart = null;
+  clipEnd = null;
+  document.getElementById("start-display").textContent = "--:--";
+  document.getElementById("end-display").textContent = "--:--";
+  document.getElementById("tags-input").value = "";
+  document.getElementById("note-input").value = "";
+}
+
+async function deleteClip(file, index) {
+  await fetch("/api/annotations", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file, clip_index: index })
+  });
+  await loadAnnotations();
+  renderClips();
+}
+
+// --- Clips display ---
+function renderClips() {
+  const list = document.getElementById("clips-list");
+  list.innerHTML = "";
+  const entry = allAnnotations.videos.find(v => v.file === currentVideoPath);
+  if (!entry || !entry.clips.length) {
+    list.innerHTML = '<div style="color:#666;font-size:13px">No clips yet</div>';
+    return;
+  }
+  entry.clips.forEach((clip, i) => {
+    const card = document.createElement("div");
+    card.className = "clip-card";
+    card.innerHTML = `
+      <span class="clip-time" onclick="seekTo('${clip.start}')">${clip.start}</span>
+      <span style="color:#666">-</span>
+      <span class="clip-time" onclick="seekTo('${clip.end}')">${clip.end}</span>
+      <div class="clip-tags">${(clip.tags||[]).map(t => `<span class="tag-badge">${esc(t)}</span>`).join("")}</div>
+      <span class="clip-note">${esc(clip.note || "")}</span>
+      <div class="clip-actions"><button class="sm" onclick="deleteClip('${escAttr(entry.file)}', ${i})">Del</button></div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+function seekTo(timeStr) {
+  player.currentTime = parseTime(timeStr);
+  player.play();
+}
+
+// --- Search ---
+async function searchClips() {
+  const query = document.getElementById("search-input").value.trim();
+  if (!query) return;
+  const res = await fetch("/api/search?tag=" + encodeURIComponent(query));
+  const results = await res.json();
+  const container = document.getElementById("results-list");
+  const section = document.getElementById("search-results");
+  container.innerHTML = "";
+
+  if (!results.length) {
+    container.innerHTML = '<div style="color:#666">No results</div>';
+    section.style.display = "block";
+    return;
+  }
+
+  results.forEach(r => {
+    const div = document.createElement("div");
+    div.className = "search-result";
+    div.innerHTML = `
+      <span class="clip-time">${r.clip.start} - ${r.clip.end}</span>
+      <span class="clip-tags" style="display:inline-flex;gap:4px;margin-left:8px">
+        ${(r.clip.tags||[]).map(t => `<span class="tag-badge">${esc(t)}</span>`).join("")}
+      </span>
+      ${r.clip.note ? `<span class="clip-note" style="margin-left:8px">${esc(r.clip.note)}</span>` : ""}
+      <div class="sr-file">${esc(r.file)}</div>
+    `;
+    div.onclick = () => {
+      loadVideo(r.file);
+      setTimeout(() => seekTo(r.clip.start), 500);
+    };
+    container.appendChild(div);
+  });
+  section.style.display = "block";
+}
+
+function clearSearch() {
+  document.getElementById("search-input").value = "";
+  document.getElementById("search-results").style.display = "none";
+}
+
+// --- Helpers ---
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+function escAttr(s) {
+  return s.replace(/'/g, "\\'").replace(/\\/g, "\\\\");
+}
+
+// --- Init ---
+async function loadAnnotations() {
+  const res = await fetch("/api/annotations");
+  allAnnotations = await res.json();
+}
+
+async function init() {
+  const [treeRes] = await Promise.all([fetch("/api/tree"), loadAnnotations()]);
+  const tree = await treeRes.json();
+  renderTree(tree, sidebar);
+}
+
+init();
+</script>
+</body>
+</html>
