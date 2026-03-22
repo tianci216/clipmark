@@ -1,3 +1,5 @@
 # cache
 __pycache__/
 
+# yaml file
+annotations.yaml

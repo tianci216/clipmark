@@ -4,186 +4,517 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Clipmark</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+:root {
+  --bg-deep: #0e0d0b;
+  --bg-surface: #181714;
+  --bg-card: #1f1d19;
+  --bg-elevated: #29261f;
+  --border: #342f26;
+  --border-subtle: #2a261f;
+  --text-primary: #ede8df;
+  --text-secondary: #a9a294;
+  --text-muted: #6b6560;
+  --accent: #d4a04a;
+  --accent-dim: #b8892f;
+  --accent-glow: rgba(212, 160, 74, 0.12);
+  --accent-hover: #e4b45a;
+  --danger: #c75d4a;
+  --tag-bg: rgba(212, 160, 74, 0.1);
+  --tag-border: rgba(212, 160, 74, 0.25);
+  --radius: 8px;
+  --radius-sm: 5px;
+  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #1a1a2e;
-  color: #e0e0e0;
+  font-family: "DM Sans", system-ui, sans-serif;
+  background: var(--bg-deep);
+  color: var(--text-primary);
   height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 280px 1fr;
+  overflow: hidden;
 }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ========== Header ========== */
 header {
   grid-column: 1 / -1;
-  background: #16213e;
-  padding: 10px 20px;
+  background: var(--bg-surface);
+  padding: 0 24px;
   display: flex;
   align-items: center;
-  gap: 20px;
-  border-bottom: 1px solid #0f3460;
+  gap: 24px;
+  height: 56px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 10;
 }
-header h1 { font-size: 18px; color: #e94560; white-space: nowrap; }
+
+header::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-glow), transparent);
+}
+
+.logo {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.logo h1 {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.logo span {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
 #search-bar {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex: 1;
-  max-width: 500px;
+  max-width: 480px;
+  margin-left: auto;
 }
+
 #search-input {
   flex: 1;
-  padding: 6px 12px;
-  border: 1px solid #0f3460;
-  border-radius: 4px;
-  background: #1a1a2e;
-  color: #e0e0e0;
-  font-size: 14px;
-}
-#search-input::placeholder { color: #666; }
-button {
-  padding: 6px 14px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: "DM Sans", system-ui, sans-serif;
   font-size: 13px;
-  background: #0f3460;
-  color: #e0e0e0;
+  outline: none;
+  transition: border-color var(--transition);
 }
-button:hover { background: #533483; }
-button.accent { background: #e94560; }
-button.accent:hover { background: #c73e55; }
-button.sm { padding: 3px 8px; font-size: 12px; }
 
-/* Sidebar */
-#sidebar {
-  background: #16213e;
-  overflow-y: auto;
-  padding: 8px;
-  border-right: 1px solid #0f3460;
-  font-size: 13px;
+#search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
 }
-#sidebar details { margin-left: 4px; }
+
+#search-input::placeholder { color: var(--text-muted); }
+
+/* ========== Buttons ========== */
+button {
+  padding: 7px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+button:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+button:active { transform: scale(0.97); }
+
+button.accent {
+  background: var(--accent);
+  color: var(--bg-deep);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+button.accent:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+button.sm {
+  padding: 3px 10px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+}
+
+button.danger-sm {
+  padding: 3px 10px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  border-color: transparent;
+  background: transparent;
+}
+
+button.danger-sm:hover {
+  background: rgba(199, 93, 74, 0.1);
+  border-color: rgba(199, 93, 74, 0.3);
+}
+
+button.mark-btn {
+  padding: 7px 14px;
+  border: 1px dashed var(--border);
+  background: transparent;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+button.mark-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+/* ========== Sidebar ========== */
+#sidebar {
+  background: var(--bg-surface);
+  overflow-y: auto;
+  padding: 12px;
+  border-right: 1px solid var(--border);
+  font-size: 13px;
+  animation: slideIn 0.4s ease;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+#sidebar details { margin-left: 2px; margin-bottom: 2px; }
+
+#sidebar details[open] > summary {
+  color: var(--text-primary);
+}
+
 #sidebar summary {
   cursor: pointer;
-  padding: 3px 4px;
-  border-radius: 3px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
   user-select: none;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  transition: all var(--transition);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
-#sidebar summary:hover { background: #0f3460; }
-#sidebar ul { list-style: none; margin-left: 8px; }
+
+#sidebar summary::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid var(--text-muted);
+  border-bottom: 1.5px solid var(--text-muted);
+  transform: rotate(-45deg);
+  transition: transform var(--transition);
+  flex-shrink: 0;
+}
+
+#sidebar details[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+#sidebar summary:hover { background: var(--bg-elevated); color: var(--text-primary); }
+#sidebar ul { list-style: none; margin-left: 12px; }
+
 #sidebar .video-item {
-  padding: 4px 8px;
+  padding: 5px 10px;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: all var(--transition);
+  margin: 1px 0;
 }
-#sidebar .video-item:hover { background: #533483; }
-#sidebar .video-item.active { background: #0f3460; }
 
-/* Main */
+#sidebar .video-item:hover {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+#sidebar .video-item.active {
+  background: var(--accent-glow);
+  color: var(--accent);
+  font-weight: 500;
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+}
+
+/* ========== Main Area ========== */
 #main {
   overflow-y: auto;
-  padding: 16px;
+  padding: 24px 28px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-video {
-  width: 100%;
-  max-height: 55vh;
-  background: #000;
-  border-radius: 6px;
-}
-#no-video {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 300px;
-  color: #666;
-  font-size: 16px;
-  border: 1px dashed #333;
-  border-radius: 6px;
+  gap: 16px;
+  animation: fadeUp 0.5s ease;
 }
 
-/* Controls */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========== Video ========== */
+video {
+  width: 100%;
+  max-height: 58vh;
+  background: #000;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+#no-video {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 340px;
+  color: var(--text-muted);
+  font-size: 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  gap: 12px;
+  animation: fadeUp 0.6s ease;
+}
+
+#no-video::before {
+  content: "PLAY";
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 48px;
+  color: var(--border);
+  letter-spacing: 0.15em;
+}
+
+/* ========== Controls ========== */
 #controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
+  padding: 14px 18px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
+  animation: fadeUp 0.5s ease 0.1s both;
 }
-#controls .time-display {
-  font-family: "SF Mono", "Menlo", monospace;
-  font-size: 14px;
-  color: #e94560;
-  min-width: 50px;
-}
-#controls input[type="text"], #controls textarea {
-  padding: 6px 10px;
-  border: 1px solid #0f3460;
-  border-radius: 4px;
-  background: #1a1a2e;
-  color: #e0e0e0;
-  font-size: 13px;
-}
-#tags-input { width: 220px; }
-#note-input { width: 300px; resize: none; height: 32px; font-family: inherit; }
 
-/* Clips list */
-#clips-section h3 { font-size: 14px; color: #888; margin-bottom: 6px; }
+#controls .time-display {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--accent);
+  min-width: 48px;
+  text-align: center;
+}
+
+.time-separator {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 0 2px;
+}
+
+#controls input[type="text"],
+#controls textarea {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+#controls input[type="text"]:focus,
+#controls textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+#controls input::placeholder,
+#controls textarea::placeholder { color: var(--text-muted); }
+
+#tags-input { width: 200px; }
+#note-input {
+  width: 260px;
+  resize: none;
+  height: 34px;
+  font-family: "DM Sans", system-ui, sans-serif;
+}
+
+/* ========== Clips Section ========== */
+#clips-section {
+  animation: fadeUp 0.5s ease 0.2s both;
+}
+
+#clips-section h3 {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  letter-spacing: 0.02em;
+}
+
 .clip-card {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 12px;
-  background: #16213e;
-  border-radius: 5px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
   margin-bottom: 6px;
   font-size: 13px;
+  border: 1px solid transparent;
+  transition: all var(--transition);
 }
+
+.clip-card:hover {
+  border-color: var(--border);
+  background: var(--bg-elevated);
+}
+
 .clip-time {
-  font-family: "SF Mono", "Menlo", monospace;
-  color: #e94560;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
   cursor: pointer;
   white-space: nowrap;
+  transition: color var(--transition);
 }
-.clip-time:hover { text-decoration: underline; }
-.clip-tags { display: flex; gap: 4px; flex-wrap: wrap; }
-.tag-badge {
-  background: #0f3460;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-}
-.clip-note { color: #999; font-size: 12px; flex: 1; }
-.clip-actions { margin-left: auto; }
 
-/* Search results */
+.clip-time:hover {
+  color: var(--accent-hover);
+  text-decoration: none;
+}
+
+.clip-time-sep { color: var(--text-muted); font-size: 11px; margin: 0 1px; }
+
+.clip-tags { display: flex; gap: 5px; flex-wrap: wrap; }
+
+.tag-badge {
+  background: var(--tag-bg);
+  border: 1px solid var(--tag-border);
+  color: var(--accent);
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.clip-note {
+  color: var(--text-muted);
+  font-size: 12px;
+  flex: 1;
+  font-style: italic;
+}
+
+.clip-actions { margin-left: auto; opacity: 0; transition: opacity var(--transition); }
+.clip-card:hover .clip-actions { opacity: 1; }
+
+/* ========== Search Results ========== */
 #search-results {
   display: none;
-  background: #16213e;
-  border-radius: 6px;
-  padding: 12px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  border: 1px solid var(--border-subtle);
+  animation: fadeUp 0.4s ease;
 }
-#search-results h3 { font-size: 14px; color: #888; margin-bottom: 8px; }
+
+#search-results h3 {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
 .search-result {
-  padding: 8px;
-  border-radius: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   margin-bottom: 4px;
   font-size: 13px;
+  transition: all var(--transition);
+  border: 1px solid transparent;
 }
-.search-result:hover { background: #0f3460; }
-.search-result .sr-file { color: #888; font-size: 12px; }
+
+.search-result:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+.search-result .sr-file {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+/* ========== Empty State ========== */
+.empty-state {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+/* ========== Responsive ========== */
+@media (max-width: 800px) {
+  body { grid-template-columns: 1fr; }
+  #sidebar { display: none; }
+  #main { padding: 16px; }
+}
 </style>
 </head>
 <body>
 
 <header>
-  <h1>CLIPMARK</h1>
+  <div class="logo">
+    <h1>Clipmark</h1>
+    <span>dance archive</span>
+  </div>
   <div id="search-bar">
     <input type="text" id="search-input" placeholder="Search clips by tag..." onkeydown="if(event.key==='Enter')searchClips()">
     <button onclick="searchClips()">Search</button>
@@ -198,9 +529,10 @@ video {
   <video id="player" controls style="display:none"></video>
 
   <div id="controls" style="display:none">
-    <button onclick="markStart()">Mark Start</button>
+    <button class="mark-btn" onclick="markStart()">IN</button>
     <span id="start-display" class="time-display">--:--</span>
-    <button onclick="markEnd()">Mark End</button>
+    <span class="time-separator">&rarr;</span>
+    <button class="mark-btn" onclick="markEnd()">OUT</button>
     <span id="end-display" class="time-display">--:--</span>
     <input type="text" id="tags-input" placeholder="Tags (comma-separated)">
     <textarea id="note-input" placeholder="Note..."></textarea>
@@ -208,7 +540,7 @@ video {
   </div>
 
   <div id="clips-section" style="display:none">
-    <h3>Clips</h3>
+    <h3>Saved Clips</h3>
     <div id="clips-list"></div>
   </div>
 
@@ -349,7 +681,7 @@ function renderClips() {
   list.innerHTML = "";
   const entry = allAnnotations.videos.find(v => v.file === currentVideoPath);
   if (!entry || !entry.clips.length) {
-    list.innerHTML = '<div style="color:#666;font-size:13px">No clips yet</div>';
+    list.innerHTML = '<div class="empty-state">No clips saved yet</div>';
     return;
   }
   entry.clips.forEach((clip, i) => {
@@ -357,11 +689,11 @@ function renderClips() {
     card.className = "clip-card";
     card.innerHTML = `
       <span class="clip-time" onclick="seekTo('${clip.start}')">${clip.start}</span>
-      <span style="color:#666">-</span>
+      <span class="clip-time-sep">&rarr;</span>
       <span class="clip-time" onclick="seekTo('${clip.end}')">${clip.end}</span>
       <div class="clip-tags">${(clip.tags||[]).map(t => `<span class="tag-badge">${esc(t)}</span>`).join("")}</div>
       <span class="clip-note">${esc(clip.note || "")}</span>
-      <div class="clip-actions"><button class="sm" onclick="deleteClip('${escAttr(entry.file)}', ${i})">Del</button></div>
+      <div class="clip-actions"><button class="danger-sm" onclick="deleteClip('${escAttr(entry.file)}', ${i})">Remove</button></div>
     `;
     list.appendChild(card);
   });
@@ -383,7 +715,7 @@ async function searchClips() {
   container.innerHTML = "";
 
   if (!results.length) {
-    container.innerHTML = '<div style="color:#666">No results</div>';
+    container.innerHTML = '<div class="empty-state">No matching clips found</div>';
     section.style.display = "block";
     return;
   }
@@ -392,11 +724,13 @@ async function searchClips() {
     const div = document.createElement("div");
     div.className = "search-result";
     div.innerHTML = `
-      <span class="clip-time">${r.clip.start} - ${r.clip.end}</span>
-      <span class="clip-tags" style="display:inline-flex;gap:4px;margin-left:8px">
+      <span class="clip-time">${r.clip.start}</span>
+      <span class="clip-time-sep">&rarr;</span>
+      <span class="clip-time">${r.clip.end}</span>
+      <span class="clip-tags" style="display:inline-flex;gap:5px;margin-left:10px">
         ${(r.clip.tags||[]).map(t => `<span class="tag-badge">${esc(t)}</span>`).join("")}
       </span>
-      ${r.clip.note ? `<span class="clip-note" style="margin-left:8px">${esc(r.clip.note)}</span>` : ""}
+      ${r.clip.note ? `<span class="clip-note" style="margin-left:10px">${esc(r.clip.note)}</span>` : ""}
       <div class="sr-file">${esc(r.file)}</div>
     `;
     div.onclick = () => {
