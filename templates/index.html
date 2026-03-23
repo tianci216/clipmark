@@ -520,6 +520,7 @@ video {
     <button onclick="searchClips()">Search</button>
     <button onclick="clearSearch()">Clear</button>
   </div>
+  <button onclick="refreshTree()" title="Rescan video folder" style="margin-left:4px">Refresh</button>
 </header>
 
 <div id="sidebar"></div>
@@ -761,6 +762,13 @@ function escAttr(s) {
 async function loadAnnotations() {
   const res = await fetch("/api/annotations");
   allAnnotations = await res.json();
+}
+
+async function refreshTree() {
+  sidebar.innerHTML = "";
+  const res = await fetch("/api/tree");
+  const tree = await res.json();
+  renderTree(tree, sidebar);
 }
 
 async function init() {
