@@ -573,6 +573,9 @@ let currentVideoPath = null;
 let currentVideoHash = null;
 let clipStart = null;
 let clipEnd = null;
+let loopStart = null;
+let loopEnd = null;
+let loopSeekIgnore = false;
 let allAnnotations = { videos: [] };
 
 const player = document.getElementById("player");
@@ -710,7 +713,7 @@ function renderClips() {
     const card = document.createElement("div");
     card.className = "clip-card";
     card.innerHTML = `
-      <span class="clip-time" onclick="seekTo('${clip.start}')">${clip.start}</span>
+      <span class="clip-time" onclick="startLoop('${clip.start}','${clip.end}')">${clip.start}</span>
       <span class="clip-time-sep">&rarr;</span>
       <span class="clip-time" onclick="seekTo('${clip.end}')">${clip.end}</span>
       <div class="clip-tags">${(clip.tags||[]).map(t => `<span class="tag-badge">${esc(t)}</span>`).join("")}</div>
@@ -722,9 +725,40 @@ function renderClips() {
 }
 
 function seekTo(timeStr) {
+  clearLoop();
   player.currentTime = parseTime(timeStr);
   player.play();
 }
+
+function startLoop(startStr, endStr) {
+  loopStart = parseTime(startStr);
+  loopEnd = parseTime(endStr);
+  loopSeekIgnore = true;
+  player.currentTime = loopStart;
+  player.play();
+}
+
+function clearLoop() {
+  loopStart = null;
+  loopEnd = null;
+}
+
+player.addEventListener("timeupdate", () => {
+  if (loopStart !== null && loopEnd !== null && player.currentTime >= loopEnd) {
+    loopSeekIgnore = true;
+    player.currentTime = loopStart;
+  }
+});
+
+player.addEventListener("seeking", () => {
+  if (loopSeekIgnore) {
+    loopSeekIgnore = false;
+    return;
+  }
+  if (loopStart !== null && loopEnd !== null) {
+    clearLoop();
+  }
+});
 
 // --- Search ---
 async function searchClips() {
@@ -759,7 +793,7 @@ async function searchClips() {
       const sidebarItem = document.querySelector(`.video-item[data-hash="${r.hash}"]`);
       const path = sidebarItem ? sidebarItem.dataset.path : r.file;
       loadVideo(path, r.hash);
-      setTimeout(() => seekTo(r.clip.start), 500);
+      setTimeout(() => startLoop(r.clip.start, r.clip.end), 500);
     };
     container.appendChild(div);
   });
