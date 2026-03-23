@@ -553,6 +553,7 @@ video {
 
 <script>
 let currentVideoPath = null;
+let currentVideoHash = null;
 let clipStart = null;
 let clipEnd = null;
 let allAnnotations = { videos: [] };
@@ -591,7 +592,8 @@ function renderTree(node, parentEl) {
       li.className = "video-item";
       li.title = v.path;
       li.dataset.path = v.path;
-      li.onclick = () => loadVideo(v.path);
+      li.dataset.hash = v.hash;
+      li.onclick = () => loadVideo(v.path, v.hash);
       ul.appendChild(li);
     });
     details.appendChild(ul);
@@ -600,8 +602,9 @@ function renderTree(node, parentEl) {
 }
 
 // --- Video ---
-function loadVideo(path) {
+function loadVideo(path, hash) {
   currentVideoPath = path;
+  currentVideoHash = hash;
   clipStart = null;
   clipEnd = null;
   document.getElementById("start-display").textContent = "--:--";
@@ -650,6 +653,7 @@ async function saveClip() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      hash: currentVideoHash,
       file: currentVideoPath,
       clip: { start: formatTime(clipStart), end: formatTime(clipEnd), tags, note }
     })
@@ -666,11 +670,11 @@ async function saveClip() {
   document.getElementById("note-input").value = "";
 }
 
-async function deleteClip(file, index) {
+async function deleteClip(hash, index) {
   await fetch("/api/annotations", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ file, clip_index: index })
+    body: JSON.stringify({ hash, clip_index: index })
   });
   await loadAnnotations();
   renderClips();
@@ -680,7 +684,7 @@ async function deleteClip(file, index) {
 function renderClips() {
   const list = document.getElementById("clips-list");
   list.innerHTML = "";
-  const entry = allAnnotations.videos.find(v => v.file === currentVideoPath);
+  const entry = allAnnotations.videos.find(v => v.hash === currentVideoHash);
   if (!entry || !entry.clips.length) {
     list.innerHTML = '<div class="empty-state">No clips saved yet</div>';
     return;
@@ -694,7 +698,7 @@ function renderClips() {
       <span class="clip-time" onclick="seekTo('${clip.end}')">${clip.end}</span>
       <div class="clip-tags">${(clip.tags||[]).map(t => `<span class="tag-badge">${esc(t)}</span>`).join("")}</div>
       <span class="clip-note">${esc(clip.note || "")}</span>
-      <div class="clip-actions"><button class="danger-sm" onclick="deleteClip('${escAttr(entry.file)}', ${i})">Remove</button></div>
+      <div class="clip-actions"><button class="danger-sm" onclick="deleteClip('${escAttr(entry.hash)}', ${i})">Remove</button></div>
     `;
     list.appendChild(card);
   });
@@ -735,7 +739,9 @@ async function searchClips() {
       <div class="sr-file">${esc(r.file)}</div>
     `;
     div.onclick = () => {
-      loadVideo(r.file);
+      const sidebarItem = document.querySelector(`.video-item[data-hash="${r.hash}"]`);
+      const path = sidebarItem ? sidebarItem.dataset.path : r.file;
+      loadVideo(path, r.hash);
       setTimeout(() => seekTo(r.clip.start), 500);
     };
     container.appendChild(div);

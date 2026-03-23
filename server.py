@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import os
 from pathlib import Path
 
@@ -8,6 +9,14 @@ from flask import Flask, Response, jsonify, render_template, request
 app = Flask(__name__)
 ANNOTATIONS_FILE = Path(__file__).parent / "annotations.yaml"
 VIDEO_EXTENSIONS = {".mp4", ".mov"}
+HASH_BYTES = 65536  # first 64KB for content hashing
+
+
+def compute_file_hash(filepath):
+    h = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        h.update(f.read(HASH_BYTES))
+    return h.hexdigest()[:16]
 
 
 def parse_args():
@@ -40,7 +49,9 @@ def build_tree(video_dir):
         )
         for v in videos:
             vpath = os.path.join(rel, v) if rel else v
-            node["videos"].append({"name": v, "path": vpath})
+            full = os.path.join(video_dir, vpath)
+            vhash = compute_file_hash(full)
+            node["videos"].append({"name": v, "path": vpath, "hash": vhash})
 
     return tree
 
@@ -135,18 +146,21 @@ def get_annotations():
 @app.route("/api/annotations", methods=["POST"])
 def post_annotation():
     body = request.json
-    file_path = body["file"]
+    video_hash = body["hash"]
+    file_path = body.get("file", "")
     clip = body["clip"]
 
     data = load_annotations()
     video_entry = None
     for v in data["videos"]:
-        if v["file"] == file_path:
+        if v["hash"] == video_hash:
             video_entry = v
             break
     if not video_entry:
-        video_entry = {"file": file_path, "clips": []}
+        video_entry = {"hash": video_hash, "file": file_path, "clips": []}
         data["videos"].append(video_entry)
+    else:
+        video_entry["file"] = file_path
 
     video_entry["clips"].append(clip)
     save_annotations(data)
@@ -156,12 +170,12 @@ def post_annotation():
 @app.route("/api/annotations", methods=["DELETE"])
 def delete_annotation():
     body = request.json
-    file_path = body["file"]
+    video_hash = body["hash"]
     clip_index = body["clip_index"]
 
     data = load_annotations()
     for v in data["videos"]:
-        if v["file"] == file_path:
+        if v["hash"] == video_hash:
             if 0 <= clip_index < len(v["clips"]):
                 v["clips"].pop(clip_index)
             if not v["clips"]:
@@ -182,7 +196,7 @@ def search_clips():
     for v in data["videos"]:
         for i, clip in enumerate(v.get("clips", [])):
             if any(tag in t.lower() for t in clip.get("tags", [])):
-                results.append({"file": v["file"], "clip": clip, "clip_index": i})
+                results.append({"hash": v["hash"], "file": v.get("file", ""), "clip": clip, "clip_index": i})
     return jsonify(results)
 
 
