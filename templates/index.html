@@ -96,16 +96,9 @@ header::after {
   font-weight: 500;
 }
 
-#search-bar {
-  display: flex;
-  gap: 6px;
-  flex: 1;
-  max-width: 480px;
-  margin-left: auto;
-}
-
 #search-input {
-  flex: 1;
+  margin-left: auto;
+  width: 260px;
   padding: 7px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -195,12 +188,25 @@ button.mark-btn:hover {
 }
 
 /* ========== Sidebar ========== */
-#sidebar {
+#sidebar-wrapper {
+  display: flex;
+  flex-direction: column;
   background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+
+#sidebar-toolbar {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+#sidebar {
   overflow-y: auto;
   padding: 12px;
-  border-right: 1px solid var(--border);
   font-size: 13px;
+  flex: 1;
   animation: slideIn 0.4s ease;
 }
 
@@ -456,11 +462,20 @@ video {
 /* ========== Search Results ========== */
 #search-results {
   display: none;
+  position: absolute;
+  top: 100%;
+  right: 24px;
+  width: 360px;
+  max-height: 70vh;
+  overflow-y: auto;
   background: var(--bg-card);
-  border-radius: var(--radius);
+  border-radius: 0 0 var(--radius) var(--radius);
   padding: 16px 18px;
   border: 1px solid var(--border-subtle);
-  animation: fadeUp 0.4s ease;
+  border-top: none;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  z-index: 20;
+  animation: fadeUp 0.3s ease;
 }
 
 #search-results h3 {
@@ -492,6 +507,8 @@ video {
   margin-top: 4px;
 }
 
+
+
 /* ========== Empty State ========== */
 .empty-state {
   color: var(--text-muted);
@@ -503,8 +520,8 @@ video {
 /* ========== Responsive ========== */
 @media (max-width: 800px) {
   body { grid-template-columns: 1fr; }
-  #sidebar { display: none; }
-  #main { padding: 16px; }
+  #sidebar-wrapper { display: none; }
+#main { padding: 16px; }
 }
 </style>
 </head>
@@ -515,15 +532,19 @@ video {
     <h1>Clipmark</h1>
     <span>dance archive</span>
   </div>
-  <div id="search-bar">
-    <input type="text" id="search-input" placeholder="Search clips by tag..." onkeydown="if(event.key==='Enter')searchClips()">
-    <button onclick="searchClips()">Search</button>
-    <button onclick="clearSearch()">Clear</button>
+  <input type="text" id="search-input" placeholder="Search by tag..." onkeydown="if(event.key==='Enter')searchClips()">
+  <div id="search-results">
+    <h3>Search Results</h3>
+    <div id="results-list"></div>
   </div>
-  <button onclick="refreshTree()" title="Rescan video folder" style="margin-left:4px">Refresh</button>
 </header>
 
-<div id="sidebar"></div>
+<div id="sidebar-wrapper">
+  <div id="sidebar-toolbar">
+    <button onclick="refreshTree()" title="Rescan video folder" class="sm" style="width:100%">Refresh</button>
+  </div>
+  <div id="sidebar"></div>
+</div>
 
 <div id="main">
   <div id="no-video">Select a video from the sidebar</div>
@@ -544,12 +565,8 @@ video {
     <h3>Saved Clips</h3>
     <div id="clips-list"></div>
   </div>
-
-  <div id="search-results">
-    <h3>Search Results</h3>
-    <div id="results-list"></div>
-  </div>
 </div>
+
 
 <script>
 let currentVideoPath = null;
@@ -732,10 +749,10 @@ async function searchClips() {
       <span class="clip-time">${r.clip.start}</span>
       <span class="clip-time-sep">&rarr;</span>
       <span class="clip-time">${r.clip.end}</span>
-      <span class="clip-tags" style="display:inline-flex;gap:5px;margin-left:10px">
+      <div class="clip-tags" style="margin-top:4px">
         ${(r.clip.tags||[]).map(t => `<span class="tag-badge">${esc(t)}</span>`).join("")}
-      </span>
-      ${r.clip.note ? `<span class="clip-note" style="margin-left:10px">${esc(r.clip.note)}</span>` : ""}
+      </div>
+      ${r.clip.note ? `<div class="clip-note" style="margin-top:2px">${esc(r.clip.note)}</div>` : ""}
       <div class="sr-file">${esc(r.file)}</div>
     `;
     div.onclick = () => {
@@ -782,6 +799,14 @@ async function init() {
   const tree = await treeRes.json();
   renderTree(tree, sidebar);
 }
+
+document.addEventListener("click", e => {
+  const results = document.getElementById("search-results");
+  const input = document.getElementById("search-input");
+  if (results.style.display === "block" && !results.contains(e.target) && e.target !== input) {
+    results.style.display = "none";
+  }
+});
 
 init();
 </script>
