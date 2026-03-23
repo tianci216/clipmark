@@ -6,7 +6,7 @@ So I created ClipMark to do exactly this, clipping and tagging dance videos for 
 With ClipMark you can create clips by marking start and end times, and you can add tags and a note to each one. You can search clips by tag (e.g. swing out). Clips loop until you click on the timeline. You can move and rename files freely as each file is tracked by hash, not a hardcoded path.
 
 ## Demo
-[![ClipMark Demo](https://img.youtube.com/vi/SvEPgWu__PM/maxresdefault.jpg)](https://youtu.be/SvEPgWu__PM)
+[![ClipMark Demo](https://img.youtube.com/vi/P4Rupk7zbEU/maxresdefault.jpg)](https://youtu.be/P4Rupk7zbEU)
 
 ## Installation
 
