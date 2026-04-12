@@ -330,6 +330,12 @@ video {
 }
 
 /* ========== Controls ========== */
+.mark-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 #controls {
   display: flex;
   flex-wrap: wrap;
@@ -517,17 +523,136 @@ video {
   padding: 4px 0;
 }
 
-/* ========== Responsive ========== */
+/* ========== Mobile toggle button ========== */
+#sidebar-toggle {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 22px;
+  padding: 4px 8px;
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* ========== Mobile overlay ========== */
+#sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 99;
+}
+
+/* ========== Mobile ========== */
 @media (max-width: 800px) {
-  body { grid-template-columns: 1fr; }
-  #sidebar-wrapper { display: none; }
-#main { padding: 16px; }
+  body {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
+  }
+
+  /* Header */
+  header {
+    padding: 0 12px;
+    gap: 10px;
+    height: 48px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+  #sidebar-toggle { display: block; }
+  .logo span { display: none; }
+  .logo h1 { font-size: 18px; }
+  #search-input {
+    width: 0;
+    flex: 1;
+    min-width: 0;
+    margin-left: 0;
+    font-size: 14px;
+    padding: 6px 10px;
+  }
+  #search-results {
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-height: 50vh;
+  }
+
+  /* Sidebar drawer */
+  #sidebar-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+  }
+  #sidebar-wrapper.open { transform: translateX(0); }
+  #sidebar-overlay.open { display: block; }
+
+  /* Main area */
+  #main {
+    padding: 12px;
+    gap: 12px;
+    overflow: visible;
+  }
+
+  /* Video */
+  video {
+    max-height: none;
+    border-radius: var(--radius-sm);
+    box-shadow: none;
+  }
+  #no-video { height: 200px; }
+  #no-video::before { font-size: 32px; }
+
+  /* Controls — stack vertically */
+  #controls {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px;
+    gap: 8px;
+  }
+  #controls .mark-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+  }
+  #tags-input, #note-input {
+    width: 100% !important;
+    font-size: 14px;
+  }
+  #note-input { height: 40px; }
+  #controls button.accent { width: 100%; padding: 10px; }
+
+  /* Clip cards — stack vertically */
+  .clip-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 10px 12px;
+  }
+  .clip-card .clip-actions {
+    opacity: 1;
+    margin-left: 0;
+    align-self: flex-end;
+  }
+
+  /* Clip section */
+  #clips-section { padding-bottom: 24px; }
 }
 </style>
 </head>
 <body>
 
 <header>
+  <button id="sidebar-toggle" onclick="toggleSidebar()">&#9776;</button>
   <div class="logo">
     <h1>Clipmark</h1>
     <span>dance archive</span>
@@ -539,6 +664,7 @@ video {
   </div>
 </header>
 
+<div id="sidebar-overlay" onclick="toggleSidebar()"></div>
 <div id="sidebar-wrapper">
   <div id="sidebar-toolbar">
     <button onclick="refreshTree()" title="Rescan video folder" class="sm" style="width:100%">Refresh</button>
@@ -547,15 +673,17 @@ video {
 </div>
 
 <div id="main">
-  <div id="no-video">Select a video from the sidebar</div>
-  <video id="player" controls style="display:none"></video>
+  <div id="no-video">Select a video from the menu</div>
+  <video id="player" controls playsinline style="display:none"></video>
 
   <div id="controls" style="display:none">
-    <button class="mark-btn" onclick="markStart()">IN</button>
-    <span id="start-display" class="time-display">--:--</span>
-    <span class="time-separator">&rarr;</span>
-    <button class="mark-btn" onclick="markEnd()">OUT</button>
-    <span id="end-display" class="time-display">--:--</span>
+    <div class="mark-row">
+      <button class="mark-btn" onclick="markStart()">IN</button>
+      <span id="start-display" class="time-display">--:--</span>
+      <span class="time-separator">&rarr;</span>
+      <button class="mark-btn" onclick="markEnd()">OUT</button>
+      <span id="end-display" class="time-display">--:--</span>
+    </div>
     <input type="text" id="tags-input" placeholder="Tags (comma-separated)">
     <textarea id="note-input" placeholder="Note..."></textarea>
     <button class="accent" onclick="saveClip()">Save Clip</button>
@@ -569,6 +697,11 @@ video {
 
 
 <script>
+function toggleSidebar() {
+  document.getElementById("sidebar-wrapper").classList.toggle("open");
+  document.getElementById("sidebar-overlay").classList.toggle("open");
+}
+
 let currentVideoPath = null;
 let currentVideoHash = null;
 let clipStart = null;
@@ -613,7 +746,10 @@ function renderTree(node, parentEl) {
       li.title = v.path;
       li.dataset.path = v.path;
       li.dataset.hash = v.hash;
-      li.onclick = () => loadVideo(v.path, v.hash);
+      li.onclick = () => {
+        loadVideo(v.path, v.hash);
+        if (window.innerWidth <= 800) toggleSidebar();
+      };
       ul.appendChild(li);
     });
     details.appendChild(ul);
