@@ -204,4 +204,4 @@ if __name__ == "__main__":
     args = parse_args()
     VIDEO_DIR = Path(args.video_dir).resolve()
     print(f"Serving videos from: {VIDEO_DIR}")
-    app.run(host="127.0.0.1", port=8899)
+    app.run(host="0.0.0.0", port=8899)
