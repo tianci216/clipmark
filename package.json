@@ -1,0 +1,7 @@
+{
+  "name": "clipmark",
+  "private": true,
+  "scripts": {
+    "prototype": "npm --prefix prototype run dev"
+  }
+}

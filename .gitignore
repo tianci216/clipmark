@@ -4,3 +4,7 @@ __pycache__/
 # yaml file
 annotations.yaml
 .DS_Store
+
+# frontend prototype
+prototype/node_modules/
+prototype/dist/
