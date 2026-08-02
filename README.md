@@ -96,10 +96,6 @@ clipmark ~/Videos/Dance         # specify a different directory
 
 All clip data is saved locally in a SQLite database at `data/clipmark.db`. Videos are tracked by a content hash, so renaming or moving files won't break your clips.
 
-## Frontend and prototype
-
-The `prototype/` directory holds a throwaway visual prototype that explored three aesthetic directions; the winner (Variant A — "paper", the video is the page) is the visual spec this port follows. See `prototype/NOTES.md` for the prototype's decisions and how to run it. The prototype uses mock data and a simulated player — the real app in `src/` replaces those with live API calls and a real `<video>` element.
-
 ## Development
 
 - `npm run dev` — Vite dev server (with hot reload) proxying `/api`, `/video`, and `/thumbnails` to a `tsx watch` Express process.

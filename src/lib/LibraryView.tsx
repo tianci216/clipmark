@@ -132,7 +132,7 @@ export function LibraryView({
           <div className="cm-grid cm-grid--videos">
             {filteredVideos.map((v) => (
               <VideoCard
-                key={v.hash}
+                key={v.file}
                 video={v}
                 onOpen={() =>
                   onOpenVideo(v, scrollRef.current?.scrollTop ?? 0)
