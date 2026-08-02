@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { Clip, Video } from "./api";
 import { ClipCard, VideoCard } from "./Cards";
 import { TagFilter } from "./TagFilter";
@@ -15,6 +15,7 @@ export function LibraryView({
   tagIndex,
   videos,
   clips,
+  initialScrollTop,
   onOpenClip,
   onOpenVideo,
 }: {
@@ -25,9 +26,15 @@ export function LibraryView({
   tagIndex: TagEntry[];
   videos: Video[];
   clips: Clip[];
-  onOpenClip: (video: Video, clip: Clip) => void;
-  onOpenVideo: (video: Video) => void;
+  initialScrollTop: number;
+  onOpenClip: (video: Video, clip: Clip, scrollTop: number) => void;
+  onOpenVideo: (video: Video, scrollTop: number) => void;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = initialScrollTop;
+  }, [initialScrollTop]);
   const videosByHash = useMemo(
     () => new Map(videos.map((v) => [v.hash, v])),
     [videos],
@@ -81,7 +88,7 @@ export function LibraryView({
         <TagFilter index={tagIndex} tokens={tokens} onTokens={onTokens} />
       </header>
 
-      <div className="cm-lib">
+      <div className="cm-lib" ref={scrollRef}>
         <nav className="cm-tabs">
           <button
             className={"cm-tab" + (tab === "clips" ? " is-active" : "")}
@@ -112,7 +119,9 @@ export function LibraryView({
                   key={`${video.hash}-${clip.id}`}
                   video={video}
                   clip={clip}
-                  onOpen={() => onOpenClip(video, clip)}
+                  onOpen={() =>
+                    onOpenClip(video, clip, scrollRef.current?.scrollTop ?? 0)
+                  }
                 />
               ))}
             </div>
@@ -122,7 +131,13 @@ export function LibraryView({
         ) : (
           <div className="cm-grid cm-grid--videos">
             {filteredVideos.map((v) => (
-              <VideoCard key={v.hash} video={v} onOpen={() => onOpenVideo(v)} />
+              <VideoCard
+                key={v.hash}
+                video={v}
+                onOpen={() =>
+                  onOpenVideo(v, scrollRef.current?.scrollTop ?? 0)
+                }
+              />
             ))}
           </div>
         )}
