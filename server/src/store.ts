@@ -26,6 +26,14 @@ export interface VideoCache {
   thumbnail?: string | null;
 }
 
+export interface FileCache {
+  hash: string;
+  file: string;
+  fileMtime: number | null;
+  durationSeconds: number | null;
+  thumbnail: string | null;
+}
+
 export interface ClipInput {
   startSeconds: number;
   endSeconds: number;
@@ -207,6 +215,26 @@ export class Store {
       )
       .get(hash) as VideoRow | undefined;
     return row ? toVideo(row) : undefined;
+  }
+
+  getVideoByFile(file: string): FileCache | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT hash, file, file_mtime, duration_seconds, thumbnail
+         FROM videos WHERE file = ?
+         ORDER BY rowid DESC LIMIT 1`,
+      )
+      .get(file) as
+      | { hash: string; file: string; file_mtime: number | null; duration_seconds: number | null; thumbnail: string | null }
+      | undefined;
+    if (!row) return undefined;
+    return {
+      hash: row.hash,
+      file: row.file,
+      fileMtime: row.file_mtime,
+      durationSeconds: row.duration_seconds,
+      thumbnail: row.thumbnail,
+    };
   }
 
   getVideos(): Video[] {

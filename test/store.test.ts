@@ -127,6 +127,18 @@ describe("Store videos", () => {
     expect(video.clipCount).toBe(2);
     expect(video.firstClipStart).toBe(60);
   });
+
+  it("looks up the latest row by file path (the scan's mtime-cache key)", () => {
+    const { store } = openStore();
+    store.upsertVideo("oldhash", "videos/a.mp4");
+    store.upsertVideo("newhash", "videos/a.mp4");
+    store.updateVideoCache("newhash", { fileMtime: 999, durationSeconds: 60 });
+    const video = store.getVideoByFile("videos/a.mp4");
+    expect(video?.hash).toBe("newhash");
+    expect(video?.fileMtime).toBe(999);
+    expect(video?.durationSeconds).toBe(60);
+    expect(store.getVideoByFile("videos/missing.mp4")).toBeUndefined();
+  });
 });
 
 describe("Store clips", () => {

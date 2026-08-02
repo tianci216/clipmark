@@ -7,6 +7,7 @@ export default defineConfig({
     proxy: {
       "/api": "http://127.0.0.1:8899",
       "/video": "http://127.0.0.1:8899",
+      "/thumbnails": "http://127.0.0.1:8899",
     },
   },
   test: {
