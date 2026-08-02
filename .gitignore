@@ -1,10 +1,7 @@
 # os
 .DS_Store
 
-# cache
-__pycache__/
-
-# yaml file
+# legacy yaml data (safety net)
 annotations.yaml
 
 # sqlite database
