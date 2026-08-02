@@ -1,0 +1,26 @@
+videos:
+- hash: c5ac6603986d3888
+  file: Music and Dance Clips/Current (after 2010)/Savoy Cup 2022 - Open Strictly Final [5pIiAv_RtA8].mp4
+  clips:
+  - start: 01:44
+    end: 02:07
+    tags:
+    - william pisani
+    - alice faraone
+    - combo
+    note: Learn their combo
+  - start: 04:12
+    end: 04:31
+    tags:
+    - medard delphine
+    - charleston
+- hash: 46ed7e57a7969a4b
+  file: Music and Dance Clips/CASTLE ROCK - Nils and Bianca Improvisation.mp4
+  clips:
+  - start: 00:27
+    end: 00:38
+    tags:
+    - nils andren
+    - bianca locatelli
+    - slide
+    note: cool slide
