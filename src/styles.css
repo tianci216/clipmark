@@ -1,0 +1,28 @@
+:root {
+  color-scheme: light;
+  font-family: "Public Sans", system-ui, sans-serif;
+  background: #f4efdd;
+  color: #17150f;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  display: grid;
+  place-content: center;
+  min-height: 100vh;
+  text-align: center;
+}
+
+.app h1 {
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 600;
+  font-size: 2.5rem;
+  margin: 0;
+}
+
+.app p {
+  color: #6b6554;
+}

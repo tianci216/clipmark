@@ -1,9 +1,22 @@
+# os
+.DS_Store
+
 # cache
 __pycache__/
 
 # yaml file
 annotations.yaml
-.DS_Store
+
+# node
+node_modules/
+
+# build output
+dist/
+server/*.js
+server/*.js.map
+
+# test coverage
+coverage/
 
 # frontend prototype
 prototype/node_modules/
