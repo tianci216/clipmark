@@ -27,3 +27,11 @@ _Avoid_: ID, checksum
 **Mark**:
 The act of setting a clip's start (IN) or end (OUT) time at the current playback position.
 _Avoid_: Set, flag
+
+**Library Folder**:
+The single directory the app scans for Videos. A Video is part of the library only while its file is under this folder; Clips on Videos outside it are kept but hidden.
+_Avoid_: Video dir, root, source folder
+
+**Download**:
+An in-flight fetch of an online video into the Library Folder. It becomes a Video once the file has landed.
+_Avoid_: Job, fetch, import
