@@ -1,10 +1,21 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type { Request, Response } from "express";
 import express from "express";
-import { walkUp } from "./config.js";
-import { scanVideoDir } from "./scanner.js";
-import type { ClipInput, Store } from "./store.js";
+import { PORT, walkUp } from "./config.js";
+import { listVideoFiles, realDeps, scanVideoDir, type ScanDeps } from "./scanner.js";
+import {
+  deriveAddresses,
+  getLibraryFolder,
+  isUnderFolder,
+  relativeToFolder,
+  seedLibraryFolder,
+  setLibraryFolder,
+  validateLibraryFolder,
+  type NetworkInterfaces,
+} from "./settings.js";
+import type { Clip, ClipInput, Store } from "./store.js";
 import { mimeForFile, parseRange, resolveVideoPath } from "./videoStream.js";
 
 function findDistDir(): string | null {
@@ -46,11 +57,39 @@ function streamRange(abs: string, size: number, req: Request, res: Response): vo
 
 export interface AppOptions {
   store: Store;
-  videoDir: string;
   thumbnailDir: string;
+  /** Scanner dependencies (ffprobe/ffmpeg/hash/stat); tests inject fakes. */
+  scanDeps?: ScanDeps;
+  /** OS network interfaces for the address readback; tests inject fixtures. */
+  networkInterfaces?: NetworkInterfaces;
+  /** Environment used for the one-time CLIPMARK_VIDEO_DIR seed. */
+  env?: Record<string, string | undefined>;
+  /** Port reported in /api/settings (the one the server listens on). */
+  port?: number;
 }
 
-export function createApp({ store, videoDir, thumbnailDir }: AppOptions) {
+export function createApp({
+  store,
+  thumbnailDir,
+  scanDeps = realDeps,
+  networkInterfaces = os.networkInterfaces,
+  env = process.env,
+  port = PORT,
+}: AppOptions) {
+  seedLibraryFolder(store, env);
+  // Read per request (ADR-0005) so a PUT applies to the next scan and stream.
+  const libraryFolder = () => getLibraryFolder(store);
+
+  const settingsResponse = () => ({
+    libraryFolder: libraryFolder(),
+    ...deriveAddresses(networkInterfaces),
+    port,
+  });
+
+  /** A Clip as the API exposes it — folder-relative path — or null when it is hidden (Video outside the folder). */
+  const visibleClip = (folder: string, clip: Clip): Clip | null =>
+    isUnderFolder(folder, clip.file) ? { ...clip, file: relativeToFolder(folder, clip.file) } : null;
+
   const app = express();
   app.use(express.json());
 
@@ -58,10 +97,30 @@ export function createApp({ store, videoDir, thumbnailDir }: AppOptions) {
     res.json({ ok: true });
   });
 
+  app.get("/api/settings", (_req, res) => {
+    res.json(settingsResponse());
+  });
+
+  app.put("/api/settings", (req, res) => {
+    const body = (req.body ?? {}) as { libraryFolder?: unknown };
+    const result = validateLibraryFolder(body.libraryFolder);
+    if (!result.ok) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+    setLibraryFolder(store, result.folder);
+    res.json({ ...settingsResponse(), videoCount: listVideoFiles(result.folder).length });
+  });
+
   app.get(
     "/api/tree",
     asyncHandler(async (_req, res) => {
-      const scanned = await scanVideoDir(store, videoDir, thumbnailDir);
+      const folder = libraryFolder();
+      if (folder === null) {
+        res.json({ videos: [] });
+        return;
+      }
+      const scanned = await scanVideoDir(store, folder, thumbnailDir, scanDeps);
       const stats = new Map(store.getVideos().map((v) => [v.hash, v]));
       const videos = scanned.map((s) => {
         const stat = stats.get(s.hash);
@@ -80,7 +139,13 @@ export function createApp({ store, videoDir, thumbnailDir }: AppOptions) {
   );
 
   app.get("/api/clips", (_req, res) => {
-    res.json(store.getClips());
+    const folder = libraryFolder();
+    if (folder === null) {
+      res.json([]);
+      return;
+    }
+    // Clips on Videos outside the folder are hidden, never deleted (ADR-0005).
+    res.json(store.getClips().flatMap((c) => visibleClip(folder, c) ?? []));
   });
 
   app.post("/api/clips", (req, res) => {
@@ -111,9 +176,17 @@ export function createApp({ store, videoDir, thumbnailDir }: AppOptions) {
       note: typeof body.note === "string" ? body.note : "",
       tags: Array.isArray(body.tags) ? body.tags.filter((t): t is string => typeof t === "string") : [],
     };
+    // Only Videos in the current Library Folder can take Clips: the UI could not show
+    // one on a hidden Video, and the response must never carry an absolute path.
+    const folder = libraryFolder();
+    const video = store.getVideo(videoHash);
+    if (folder === null || !video || !isUnderFolder(folder, video.file)) {
+      res.status(400).json({ error: "That video is not in the current Library Folder." });
+      return;
+    }
     try {
       const clip = store.createClip(videoHash, input);
-      res.status(201).json(clip);
+      res.status(201).json(visibleClip(folder, clip));
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
     }
@@ -134,7 +207,8 @@ export function createApp({ store, videoDir, thumbnailDir }: AppOptions) {
 
   app.get("/video/*", (req, res) => {
     const rawPath = (req.params as Record<string, string | undefined>)["0"] ?? "";
-    const abs = resolveVideoPath(videoDir, rawPath);
+    const folder = libraryFolder();
+    const abs = folder === null ? null : resolveVideoPath(folder, rawPath);
     if (!abs) {
       res.status(403).send("Forbidden");
       return;

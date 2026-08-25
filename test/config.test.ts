@@ -1,15 +1,13 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_VIDEO_DIR, resolveVideoDir } from "../server/src/config";
+import { findDataDir, findRepoRoot } from "../server/src/config";
 
-describe("CLI contract", () => {
-  it("defaults to the dance-video folder when no video_dir is given", () => {
-    expect(resolveVideoDir([])).toBe(DEFAULT_VIDEO_DIR);
-    expect(DEFAULT_VIDEO_DIR).toBe("/Users/tianci/Documents/Swing & Jazz");
+describe("data directory", () => {
+  it("defaults to <repo>/data", () => {
+    expect(findDataDir({})).toBe(path.join(findRepoRoot(), "data"));
   });
 
-  it("uses the supplied [video_dir] positional argument", () => {
-    expect(resolveVideoDir(["node", "server/index.js", "/tmp/videos"])).toBe(
-      "/tmp/videos",
-    );
+  it("honours CLIPMARK_DATA_DIR", () => {
+    expect(findDataDir({ CLIPMARK_DATA_DIR: "/tmp/clipmark-data" })).toBe("/tmp/clipmark-data");
   });
 });

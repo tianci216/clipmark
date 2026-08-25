@@ -13,3 +13,5 @@ Search semantics preserved from the original: substring, case-insensitive match 
 Migration from YAML is mechanical: `MM:SS` → seconds, insert video → clips → tags.
 
 A `CHECK (end_seconds > start_seconds)` enforces valid time ranges at the schema level; the API rejects `end <= start` with a friendly message. Clips are create/delete only — no in-place editing (delete + re-create), preserving the original model.
+
+**Amended by ADR-0005:** `videos.file` is now an absolute path (migrated once on first run), and a fourth table `settings(key TEXT PK, value TEXT)` holds the server-owned Library Folder.

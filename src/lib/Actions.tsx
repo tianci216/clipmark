@@ -1,8 +1,9 @@
 /**
- * "+ Download" and Settings live here in their final positions. They do nothing yet —
- * the download popover and the Settings pane are wired by later tickets of #11.
+ * "+ Download" and the Settings gear, in their final positions (sidebar footer on
+ * desktop, header on phone). Download does nothing yet — its popover is wired by a
+ * later ticket of #11.
  */
-export function Actions() {
+export function Actions({ onSettings }: { onSettings: () => void }) {
   return (
     <span className="cm-actions">
       <button className="cm-actions__btn" type="button" title="Download a video (coming soon)">
@@ -11,8 +12,9 @@ export function Actions() {
       <button
         className="cm-actions__btn"
         type="button"
-        title="Settings (coming soon)"
+        title="Settings"
         aria-label="Settings"
+        onClick={onSettings}
       >
         ⚙
       </button>

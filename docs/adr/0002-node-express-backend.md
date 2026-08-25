@@ -9,3 +9,5 @@ CLI contract is preserved byte-identical: `node server/index.js [video_dir]` wit
 A small test layer (vitest) covers the deterministic backend logic — the SQLite store, `MM:SS`↔seconds conversion, and the migration importer — since the importer converts real data once. No frontend component or E2E tests for now; the UI churns in the prototype session.
 
 Dev workflow: Vite dev server proxies `/api` and `/video` to Express; production runs Express serving the built `dist/` plus the API from the single port 8899. Video streaming fixes a latent bug — MIME types are served by extension (`video/quicktime` for `.mov`), not hardcoded to `video/mp4`.
+
+**Amended by ADR-0005:** the `[video_dir]` positional argument and the hardcoded default folder are gone; the Library Folder is a server-owned setting, seeded once from `CLIPMARK_VIDEO_DIR`.

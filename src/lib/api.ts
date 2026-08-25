@@ -71,3 +71,41 @@ export async function deleteClip(id: number): Promise<void> {
     throw new Error(`DELETE /api/clips/${id} failed: ${res.status}`);
   }
 }
+
+/** GET /api/settings — the server-owned Library Folder (ADR-0005) plus the address readback. */
+export interface Settings {
+  libraryFolder: string | null;
+  tailscaleIp: string | null;
+  lanIp: string | null;
+  port: number;
+}
+
+/** PUT /api/settings response: the saved settings plus how many video files the folder holds. */
+export interface SavedSettings extends Settings {
+  videoCount: number;
+}
+
+export async function fetchSettings(): Promise<Settings> {
+  const res = await fetch("/api/settings");
+  if (!res.ok) throw new Error(`GET /api/settings failed: ${res.status}`);
+  return (await res.json()) as Settings;
+}
+
+export async function saveLibraryFolder(libraryFolder: string): Promise<SavedSettings> {
+  const res = await fetch("/api/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ libraryFolder }),
+  });
+  if (!res.ok) {
+    let message = `PUT /api/settings failed: ${res.status}`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) message = body.error;
+    } catch {
+      // keep the status message
+    }
+    throw new Error(message);
+  }
+  return (await res.json()) as SavedSettings;
+}

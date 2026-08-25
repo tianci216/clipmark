@@ -18,6 +18,7 @@ export function PhoneLibrary({
   onFolder,
   scrollRef,
   onOpen,
+  onSettings,
 }: {
   tree: LibraryTree;
   tagIndex: TagEntry[];
@@ -29,6 +30,7 @@ export function PhoneLibrary({
   /** Scroll position of the current screen, restored when coming back from the player. */
   scrollRef: MutableRefObject<number>;
   onOpen: (video: Video, clip: Clip | null) => void;
+  onSettings: () => void;
 }) {
   const el = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -61,7 +63,7 @@ export function PhoneLibrary({
             Clipmark<span>.</span>
           </div>
         )}
-        <Actions />
+        <Actions onSettings={onSettings} />
       </header>
       <div className="cm-pfilter">
         <TagFilter index={tagIndex} tokens={tokens} onTokens={onTokens} compact />

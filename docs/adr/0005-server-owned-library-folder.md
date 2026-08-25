@@ -7,3 +7,5 @@ Because the folder can now change at runtime, `videos.file` is stored as an **ab
 Clips whose Video is outside the current Library Folder are hidden everywhere the library is shown, never deleted: switching folders is reversible, deletion is not.
 
 Accepted trade-off: the server binds `0.0.0.0` so anything on the tailnet can change the folder or start a Download. This is a single-user tool and pasting links from a phone is a wanted feature; no auth is added.
+
+Testing follows from the design: `createApp` takes the Store plus injected `scanDeps`, `networkInterfaces`, `env` and `port`, so the HTTP suite (`test/app.test.ts`) drives a real listener with an in-memory Store, temp folders and no ffmpeg or real network — the seam is the API, not the internals.

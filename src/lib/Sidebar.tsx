@@ -20,6 +20,7 @@ export function Sidebar({
   target,
   onHome,
   onOpen,
+  onSettings,
 }: {
   tree: LibraryTree;
   tagIndex: TagEntry[];
@@ -28,6 +29,7 @@ export function Sidebar({
   target: Target | null;
   onHome: () => void;
   onOpen: (video: Video, clip: Clip | null) => void;
+  onSettings: () => void;
 }) {
   const treeRef = useRef<HTMLElement>(null);
   const selectedFile = target?.video.file;
@@ -96,7 +98,7 @@ export function Sidebar({
         )}
       </nav>
       <div className="cm-side__foot">
-        <Actions />
+        <Actions onSettings={onSettings} />
       </div>
     </aside>
   );

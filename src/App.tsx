@@ -3,9 +3,11 @@ import {
   createClip,
   deleteClip,
   fetchClips,
+  fetchSettings,
   fetchVideos,
   type Clip,
   type ClipInput,
+  type Settings,
   type Video,
 } from "./lib/api";
 import { dirname, folderLabel } from "./lib/format";
@@ -13,6 +15,7 @@ import { IndexPane } from "./lib/IndexPane";
 import { buildLibraryTree } from "./lib/libraryTree";
 import { PhoneLibrary } from "./lib/PhoneLibrary";
 import { PlayerPane } from "./lib/PlayerPane";
+import { SettingsPane } from "./lib/SettingsPane";
 import { Sidebar, type Target } from "./lib/Sidebar";
 import { buildTagIndex } from "./lib/tags";
 import { PHONE_QUERY, useMedia } from "./lib/useMedia";
@@ -20,7 +23,8 @@ import { PHONE_QUERY, useMedia } from "./lib/useMedia";
 /**
  * Persistent Explorer shell (ADR-0001 amendment). Selection state lives here:
  * the tag filter, the target Video + loop Clip, the phone's drilled-into folder,
- * and the scroll positions the index / folder screen restore on return.
+ * whether the main pane shows Settings, and the scroll positions the index /
+ * folder screen restore on return.
  */
 export function App() {
   const [videos, setVideos] = useState<Video[]>([]);
@@ -29,19 +33,29 @@ export function App() {
   const [tokens, setTokens] = useState<string[]>([]);
   const [target, setTarget] = useState<Target | null>(null);
   const [phoneFolder, setPhoneFolder] = useState<string | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  // Settings replaces the main pane / screen; leaving it restores whatever was there.
+  const [showSettings, setShowSettings] = useState(false);
   const indexScroll = useRef(0);
   const phoneScroll = useRef(0);
   const isPhone = useMedia(PHONE_QUERY);
 
+  const loadLibrary = useCallback(async () => {
+    const [vs, cs] = await Promise.all([fetchVideos(), fetchClips()]);
+    setVideos(vs);
+    setClips(cs);
+  }, []);
+
   useEffect(() => {
-    Promise.all([fetchVideos(), fetchClips()])
-      .then(([vs, cs]) => {
-        setVideos(vs);
-        setClips(cs);
+    Promise.all([fetchSettings(), loadLibrary()])
+      .then(([s]) => {
+        setSettings(s);
+        // First run explains itself: no Library Folder yet → open Settings.
+        if (s.libraryFolder === null) setShowSettings(true);
         setStatus("ready");
       })
       .catch(() => setStatus("error"));
-  }, []);
+  }, [loadLibrary]);
 
   const tagIndex = useMemo(() => buildTagIndex(clips), [clips]);
   const tree = useMemo(() => buildLibraryTree(videos, clips, tokens), [videos, clips, tokens]);
@@ -50,9 +64,27 @@ export function App() {
     setTarget({ video, loopClip: clip });
     // On the phone, back from the player lands in the video's own folder.
     setPhoneFolder(dirname(video.file));
+    setShowSettings(false);
   }, []);
 
-  const home = useCallback(() => setTarget(null), []);
+  const home = useCallback(() => {
+    setTarget(null);
+    setShowSettings(false);
+  }, []);
+
+  const openSettings = useCallback(() => setShowSettings(true), []);
+  const closeSettings = useCallback(() => setShowSettings(false), []);
+
+  const handleSaved = useCallback(
+    (saved: Settings) => {
+      setSettings(saved);
+      // The folder applies live on the server; the library reflects it on the next fetch.
+      setTarget(null);
+      setPhoneFolder(null);
+      loadLibrary().catch(() => setStatus("error"));
+    },
+    [loadLibrary],
+  );
 
   const handleSave = useCallback(async (video: Video, input: ClipInput): Promise<void> => {
     const clip = await createClip(video.hash, input);
@@ -94,7 +126,7 @@ export function App() {
     [clips],
   );
 
-  if (status !== "ready") {
+  if (status !== "ready" || settings === null) {
     return (
       <main className="cm-app">
         <div className="cm-empty">
@@ -120,7 +152,21 @@ export function App() {
     />
   );
 
+  const settingsPane = <SettingsPane settings={settings} onSaved={handleSaved} />;
+
   if (isPhone) {
+    if (showSettings) {
+      return (
+        <main className="cm-app cm-app--phone">
+          <header className="cm-phead">
+            <button className="cm-back" type="button" onClick={closeSettings}>
+              ‹ Library
+            </button>
+          </header>
+          {settingsPane}
+        </main>
+      );
+    }
     if (target) {
       return (
         <main className="cm-app cm-app--phone">
@@ -143,6 +189,7 @@ export function App() {
         onFolder={setPhoneFolder}
         scrollRef={phoneScroll}
         onOpen={open}
+        onSettings={openSettings}
       />
     );
   }
@@ -158,8 +205,11 @@ export function App() {
           target={target}
           onHome={home}
           onOpen={open}
+          onSettings={openSettings}
         />
-        {target ? (
+        {showSettings ? (
+          settingsPane
+        ) : target ? (
           <section className="cm-main">{player}</section>
         ) : (
           <IndexPane tree={tree} tokens={tokens} scrollRef={indexScroll} onOpen={open} />

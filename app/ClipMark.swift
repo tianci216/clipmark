@@ -4,7 +4,6 @@ import WebKit
 let PORT = 8899
 let HOME_URL = URL(string: "http://127.0.0.1:8899")!
 let HEALTH_URL = URL(string: "http://127.0.0.1:8899/api/health")!
-let DEFAULT_VIDEO_DIR = "/Users/tianci/Documents/Swing & Jazz"
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
@@ -41,9 +40,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: node)
-        proc.arguments = [serverEntry.path, videoDir()]
+        proc.arguments = [serverEntry.path]
         var env = ProcessInfo.processInfo.environment
         env["CLIPMARK_DATA_DIR"] = dataDir.path
+        // The Library Folder is a server-owned setting (ADR-0005), changed from the app's
+        // Settings pane. A folder chosen through the old "Choose Video Folder…" menu is
+        // handed over once as the first-run seed so an existing install keeps working.
+        if let legacyFolder = UserDefaults.standard.string(forKey: "videoDir") {
+            env["CLIPMARK_VIDEO_DIR"] = legacyFolder
+        }
         proc.environment = env
 
         let logURL = dataDir.appendingPathComponent("server.log")
@@ -71,11 +76,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "/usr/bin/node",
         ]
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
-    }
-
-    private func videoDir() -> String {
-        let stored = UserDefaults.standard.string(forKey: "videoDir")
-        return stored ?? DEFAULT_VIDEO_DIR
     }
 
     private func serverIsHealthy() -> Bool {
@@ -149,8 +149,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About ClipMark", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Choose Video Folder…", action: #selector(chooseVideoFolder), keyEquivalent: "")
-        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit ClipMark", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
 
@@ -161,17 +159,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         viewMenuItem.submenu = viewMenu
 
         NSApp.mainMenu = mainMenu
-    }
-
-    @objc private func chooseVideoFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Use Folder"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        UserDefaults.standard.set(url.path, forKey: "videoDir")
-        showFatalError("Video folder changed to \(url.path). Quit and relaunch ClipMark to apply it.")
     }
 
     @objc private func reloadPage() {

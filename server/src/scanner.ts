@@ -78,6 +78,7 @@ export const realDeps: ScanDeps = {
 
 export interface ScannedVideo {
   hash: string;
+  /** Path relative to the Library Folder — what the API exposes. The store keeps the absolute path. */
   file: string;
   fileMtime: number;
   durationSeconds: number | null;
@@ -108,6 +109,13 @@ function walkVideoFiles(dir: string, relDir: string, out: VideoFile[]): void {
   }
 }
 
+/** Every video file under the folder (no hashing or probing); [] when the folder is missing. */
+export function listVideoFiles(videoDir: string): VideoFile[] {
+  const files: VideoFile[] = [];
+  if (fs.existsSync(videoDir)) walkVideoFiles(videoDir, "", files);
+  return files;
+}
+
 function seekFor(durationSeconds: number | null): number {
   if (durationSeconds != null && durationSeconds > 1) return durationSeconds / 2;
   return 1;
@@ -119,14 +127,15 @@ export async function scanVideoDir(
   thumbDir: string,
   deps: ScanDeps = realDeps,
 ): Promise<ScannedVideo[]> {
-  const files: VideoFile[] = [];
-  if (fs.existsSync(videoDir)) walkVideoFiles(videoDir, "", files);
+  const files = listVideoFiles(videoDir);
 
   const results: ScannedVideo[] = [];
   for (const { abs, rel } of files) {
     try {
       const fileMtime = Math.round(deps.stat(abs));
-      const cached = store.getVideoByFile(rel);
+      // Keyed on the absolute path (ADR-0005): a same-named file in another
+      // Library Folder must miss the cache and be hashed on its own.
+      const cached = store.getVideoByFile(abs);
       if (cached && cached.fileMtime === fileMtime) {
         results.push({
           hash: cached.hash,
@@ -139,7 +148,7 @@ export async function scanVideoDir(
       }
 
       const hash = deps.hash(abs);
-      store.upsertVideo(hash, rel);
+      store.upsertVideo(hash, abs);
 
       let durationSeconds: number | null = null;
       let thumbnail: string | null = null;

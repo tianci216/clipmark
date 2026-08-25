@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export const DEFAULT_VIDEO_DIR = "/Users/tianci/Documents/Swing & Jazz";
 export const HOST = "0.0.0.0";
 export const PORT = 8899;
 export const DB_RELATIVE_PATH = "data/clipmark.db";
@@ -25,8 +24,4 @@ export function findRepoRoot(): string {
 
 export function findDataDir(env: Record<string, string | undefined> = process.env): string {
   return env.CLIPMARK_DATA_DIR ?? path.join(findRepoRoot(), "data");
-}
-
-export function resolveVideoDir(argv: string[]): string {
-  return argv[2] ?? DEFAULT_VIDEO_DIR;
 }

@@ -26,7 +26,7 @@ describe("Store schema (ADR-0004)", () => {
       )
       .all()
       .map((r) => (r as { name: string }).name);
-    expect(tables).toEqual(["clip_tags", "clips", "videos"]);
+    expect(tables).toEqual(["clip_tags", "clips", "settings", "videos"]);
   });
 
   it("gives clips the ADR-0004 columns", () => {
@@ -220,5 +220,44 @@ describe("Store tags", () => {
     store.createClip("a1b2", { startSeconds: 1, endSeconds: 2, note: "", tags: ["swing", "savoy"] });
     store.createClip("a1b2", { startSeconds: 3, endSeconds: 4, note: "", tags: ["swing"] });
     expect(store.getTags()).toEqual(["savoy", "swing"]);
+  });
+});
+
+describe("Store settings (ADR-0005)", () => {
+  it("returns null for a setting that was never written", () => {
+    const { store } = openStore();
+    expect(store.getSetting("library_folder")).toBeNull();
+  });
+
+  it("round-trips a setting and overwrites it on a second write", () => {
+    const { store } = openStore();
+    store.setSetting("library_folder", "/Volumes/Dance");
+    expect(store.getSetting("library_folder")).toBe("/Volumes/Dance");
+    store.setSetting("library_folder", "/Users/me/Videos");
+    expect(store.getSetting("library_folder")).toBe("/Users/me/Videos");
+  });
+});
+
+describe("Store video path migration (ADR-0005)", () => {
+  it("prefixes relative video paths with the Library Folder, leaving absolute ones alone", () => {
+    const { store } = openStore();
+    store.upsertVideo("rel1", "Choreography/a.mp4");
+    store.upsertVideo("rel2", "b.mov");
+    store.upsertVideo("abs1", "/Volumes/Other/c.mp4");
+    store.absolutizeVideoPaths("/Users/me/Swing & Jazz");
+    const files = Object.fromEntries(store.getVideos().map((v) => [v.hash, v.file]));
+    expect(files).toEqual({
+      rel1: "/Users/me/Swing & Jazz/Choreography/a.mp4",
+      rel2: "/Users/me/Swing & Jazz/b.mov",
+      abs1: "/Volumes/Other/c.mp4",
+    });
+  });
+
+  it("is a no-op when run a second time", () => {
+    const { store } = openStore();
+    store.upsertVideo("rel1", "a.mp4");
+    store.absolutizeVideoPaths("/lib");
+    store.absolutizeVideoPaths("/other");
+    expect(store.getVideos()[0].file).toBe("/lib/a.mp4");
   });
 });

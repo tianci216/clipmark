@@ -42,15 +42,25 @@ The migration is a one-shot, non-destructive import: it converts `MM:SS` times t
 
 ## Running
 
-Start the server, passing your video directory as an argument:
+Start the server:
 
 ```bash
-node server/index.js /path/to/your/videos
+node server/index.js
 ```
 
 Then open http://127.0.0.1:8899 in your browser.
 
-If no directory is provided, it defaults to `~/Documents/Swing & Jazz`. The server binds `0.0.0.0:8899` so it works over Tailscale on your phone.
+The **Library Folder** (the folder of videos the app scans) is a setting the server owns. On first run the app opens Settings and asks for it — type the absolute path and save; it is validated (must exist and be a directory), stored in the SQLite database, and applied immediately, no restart needed. You can change it later from the gear button in the sidebar (or the phone header), from any browser including your phone over Tailscale.
+
+To pre-fill the folder on a fresh database (for scripts or the macOS app), set `CLIPMARK_VIDEO_DIR`; it is used once as the first-run seed and never overrides a saved setting:
+
+```bash
+CLIPMARK_VIDEO_DIR="$HOME/Videos/Dance" node server/index.js
+```
+
+Upgrading an existing install: databases created before the Library Folder became a setting hold folder-relative video paths. They are migrated to absolute paths the first time a folder that actually contains those files is saved (or seeded), so either set `CLIPMARK_VIDEO_DIR` to your old folder for the first launch, or type it into Settings.
+
+The server binds `0.0.0.0:8899` so it works over Tailscale on your phone; Settings shows the `http://<Tailscale IP>:8899` address to type there, with a LAN fallback.
 
 Notes:
 
@@ -63,7 +73,7 @@ Add a function to your `~/.zshrc` (or `~/.bashrc`) so you can launch ClipMark fr
 
 ```bash
 clipmark() {
-    node /path/to/clipmark/server/index.js "$@" &
+    node /path/to/clipmark/server/index.js &
     open "http://127.0.0.1:8899"
 }
 ```
@@ -74,12 +84,7 @@ Replace `/path/to/clipmark` with the actual path where you cloned the repo. Then
 source ~/.zshrc   # or source ~/.bashrc
 ```
 
-Now you can launch ClipMark from anywhere:
-
-```bash
-clipmark                        # uses default video directory
-clipmark ~/Videos/Dance         # specify a different directory
-```
+Now you can launch ClipMark from anywhere with `clipmark`. The Library Folder is remembered between launches; change it from Settings.
 
 ## Features
 
@@ -94,11 +99,13 @@ clipmark ~/Videos/Dance         # specify a different directory
 - **State preserved** — going back from the player returns you to your exact spot: tab, filter, and scroll position.
 - **Mobile** — works on a phone over Tailscale: single-column grid and a stacked player.
 
-All clip data is saved locally in a SQLite database at `data/clipmark.db`. Videos are tracked by a content hash, so renaming or moving files won't break your clips.
+- **Settings** — the Library Folder field with a readback of the resolved path and how many videos were found, plus the Tailscale and LAN addresses to type on your phone (with Copy). Clips on videos outside the current Library Folder are hidden, not deleted, so switching folders is reversible.
+
+All clip data is saved locally in a SQLite database at `data/clipmark.db` (or `$CLIPMARK_DATA_DIR/clipmark.db`). Videos are tracked by a content hash, so renaming or moving files within the Library Folder won't break your clips.
 
 ## Development
 
 - `npm run dev` — Vite dev server (with hot reload) proxying `/api`, `/video`, and `/thumbnails` to a `tsx watch` Express process.
 - `npm run build` — builds both the server (`server/*.js`) and the client (`dist/`).
-- `npm test` — vitest suite covering the SQLite store, the YAML migration importer, and time helpers.
+- `npm test` — vitest suite covering the SQLite store, the scanner, the YAML migration importer, the library tree model, and an HTTP-level suite over the Express app (settings, live folder apply, hidden clips, address derivation).
 - `npm run typecheck` — type-checks both client and server.

@@ -89,6 +89,37 @@ describe("tree scan (mtime-cached hashing, duration, thumbnails)", () => {
     expect(videos[0].thumbnail).toBe(`/thumbnails/${computeFileHash(alpha)}.jpg`);
   });
 
+  it("stores the absolute path while reporting the folder-relative one (ADR-0005)", async () => {
+    const { mtimes, deps } = makeFakes();
+    const alpha = writeVideo("SubFolder/alpha.mp4", "alpha");
+    mtimes.set(alpha, 1000);
+    const store = openStore();
+
+    const result = await scanVideoDir(store, path.join(root, "videos"), path.join(root, "thumbs"), deps);
+
+    expect(result[0].file).toBe("SubFolder/alpha.mp4");
+    expect(store.getVideos()[0].file).toBe(alpha);
+  });
+
+  it("does not reuse the cache for a same-named file in a different Library Folder", async () => {
+    const { mtimes, deps } = makeFakes();
+    const alpha = writeVideo("alpha.mp4", "alpha");
+    const otherDir = path.join(root, "elsewhere");
+    fs.mkdirSync(otherDir, { recursive: true });
+    const other = path.join(otherDir, "alpha.mp4");
+    fs.writeFileSync(other, "completely different bytes");
+    mtimes.set(alpha, 1000);
+    mtimes.set(other, 1000);
+    const store = openStore();
+
+    await scanVideoDir(store, path.join(root, "videos"), path.join(root, "thumbs"), deps);
+    const result = await scanVideoDir(store, otherDir, path.join(root, "thumbs"), deps);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].hash).toBe(computeFileHash(other));
+    expect(result[0].hash).not.toBe(computeFileHash(alpha));
+  });
+
   it("reuses the cache when mtimes are unchanged — no re-hash, probe, or extract", async () => {
     const { mtimes, hashCalls, probeCalls, extractCalls, deps } = makeFakes();
     const alpha = writeVideo("alpha.mp4", "alpha");
@@ -134,7 +165,7 @@ describe("tree scan (mtime-cached hashing, duration, thumbnails)", () => {
     const result = await scanVideoDir(store, path.join(root, "videos"), path.join(root, "thumbs"), deps);
 
     expect(probeCalls).toHaveLength(1);
-    const video = store.getVideoByFile("alpha.mp4");
+    const video = store.getVideoByFile(alpha);
     expect(video?.fileMtime).toBe(1000);
     expect(video?.durationSeconds).toBe(120.5);
     expect(video?.thumbnail).toBe(`/thumbnails/${computeFileHash(alpha)}.jpg`);

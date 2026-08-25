@@ -67,6 +67,11 @@ CREATE TABLE IF NOT EXISTS clip_tags (
   FOREIGN KEY (clip_id) REFERENCES clips(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_clips_video_hash ON clips(video_hash);
 CREATE INDEX IF NOT EXISTS idx_clip_tags_tag ON clip_tags(tag);
 `;
@@ -103,6 +108,33 @@ export class Store {
 
   close(): void {
     this.db.close();
+  }
+
+  getSetting(key: string): string | null {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as
+      | { value: string }
+      | undefined;
+    return row ? row.value : null;
+  }
+
+  setSetting(key: string, value: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      )
+      .run(key, value);
+  }
+
+  /**
+   * One-time ADR-0005 migration: rows written before the Library Folder became a
+   * setting hold folder-relative paths; prefix them so every `videos.file` is absolute.
+   * Absolute rows (leading "/") are untouched, so running it again changes nothing.
+   */
+  absolutizeVideoPaths(libraryFolder: string): void {
+    this.db
+      .prepare("UPDATE videos SET file = ? || '/' || file WHERE file NOT LIKE '/%'")
+      .run(libraryFolder.replace(/\/+$/, ""));
   }
 
   upsertVideo(hash: string, file: string): void {
