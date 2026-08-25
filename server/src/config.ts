@@ -23,6 +23,10 @@ export function findRepoRoot(): string {
   return walkUp(import.meta.dirname, "package.json") ?? import.meta.dirname;
 }
 
+export function findDataDir(env: Record<string, string | undefined> = process.env): string {
+  return env.CLIPMARK_DATA_DIR ?? path.join(findRepoRoot(), "data");
+}
+
 export function resolveVideoDir(argv: string[]): string {
   return argv[2] ?? DEFAULT_VIDEO_DIR;
 }

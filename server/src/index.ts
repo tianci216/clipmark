@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createApp } from "./app.js";
-import { DB_RELATIVE_PATH, HOST, PORT, findRepoRoot, resolveVideoDir } from "./config.js";
+import { HOST, PORT, findDataDir, resolveVideoDir } from "./config.js";
 import { Store } from "./store.js";
 
-const repoRoot = findRepoRoot();
-const dbPath = path.join(repoRoot, DB_RELATIVE_PATH);
-const thumbnailDir = path.join(repoRoot, "data", "thumbnails");
+const dataDir = findDataDir();
+const dbPath = path.join(dataDir, "clipmark.db");
+const thumbnailDir = path.join(dataDir, "thumbnails");
 const videoDir = resolveVideoDir(process.argv);
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
