@@ -17,7 +17,8 @@
     "start": "node server/index.js",
     "migrate": "tsx server/src/migrate.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
+    "prototype": "vite -c prototype/vite.config.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
