@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createClip,
   deleteClip,
@@ -8,23 +8,30 @@ import {
   type ClipInput,
   type Video,
 } from "./lib/api";
-import { LibraryView, type Tab } from "./lib/LibraryView";
-import { PlayerView } from "./lib/PlayerView";
+import { dirname, folderLabel } from "./lib/format";
+import { IndexPane } from "./lib/IndexPane";
+import { buildLibraryTree } from "./lib/libraryTree";
+import { PhoneLibrary } from "./lib/PhoneLibrary";
+import { PlayerPane } from "./lib/PlayerPane";
+import { Sidebar, type Target } from "./lib/Sidebar";
 import { buildTagIndex } from "./lib/tags";
+import { PHONE_QUERY, useMedia } from "./lib/useMedia";
 
-interface Target {
-  video: Video;
-  loopClip: Clip | null;
-}
-
+/**
+ * Persistent Explorer shell (ADR-0001 amendment). Selection state lives here:
+ * the tag filter, the target Video + loop Clip, the phone's drilled-into folder,
+ * and the scroll positions the index / folder screen restore on return.
+ */
 export function App() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [clips, setClips] = useState<Clip[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [tab, setTab] = useState<Tab>("clips");
   const [tokens, setTokens] = useState<string[]>([]);
   const [target, setTarget] = useState<Target | null>(null);
-  const [libScroll, setLibScroll] = useState(0);
+  const [phoneFolder, setPhoneFolder] = useState<string | null>(null);
+  const indexScroll = useRef(0);
+  const phoneScroll = useRef(0);
+  const isPhone = useMedia(PHONE_QUERY);
 
   useEffect(() => {
     Promise.all([fetchVideos(), fetchClips()])
@@ -37,36 +44,34 @@ export function App() {
   }, []);
 
   const tagIndex = useMemo(() => buildTagIndex(clips), [clips]);
+  const tree = useMemo(() => buildLibraryTree(videos, clips, tokens), [videos, clips, tokens]);
 
-  const open = useCallback(
-    (video: Video, clip: Clip | null, scrollTop?: number) => {
-      if (scrollTop !== undefined) setLibScroll(scrollTop);
-      setTarget({ video, loopClip: clip });
-    },
-    [],
-  );
+  const open = useCallback((video: Video, clip: Clip | null) => {
+    setTarget({ video, loopClip: clip });
+    // On the phone, back from the player lands in the video's own folder.
+    setPhoneFolder(dirname(video.file));
+  }, []);
 
-  const handleSave = useCallback(
-    async (video: Video, input: ClipInput): Promise<void> => {
-      const clip = await createClip(video.hash, input);
-      setClips((prev) => [...prev, clip]);
-      setVideos((prev) =>
-        prev.map((v) =>
-          v.hash === video.hash
-            ? {
-                ...v,
-                clipCount: v.clipCount + 1,
-                firstClipStart:
-                  v.firstClipStart == null
-                    ? clip.startSeconds
-                    : Math.min(v.firstClipStart, clip.startSeconds),
-              }
-            : v,
-        ),
-      );
-    },
-    [],
-  );
+  const home = useCallback(() => setTarget(null), []);
+
+  const handleSave = useCallback(async (video: Video, input: ClipInput): Promise<void> => {
+    const clip = await createClip(video.hash, input);
+    setClips((prev) => [...prev, clip]);
+    setVideos((prev) =>
+      prev.map((v) =>
+        v.hash === video.hash
+          ? {
+              ...v,
+              clipCount: v.clipCount + 1,
+              firstClipStart:
+                v.firstClipStart == null
+                  ? clip.startSeconds
+                  : Math.min(v.firstClipStart, clip.startSeconds),
+            }
+          : v,
+      ),
+    );
+  }, []);
 
   const handleRemove = useCallback(
     async (clip: Clip): Promise<void> => {
@@ -75,9 +80,7 @@ export function App() {
       setVideos((prev) =>
         prev.map((v) => {
           if (v.hash !== clip.videoHash) return v;
-          const remaining = clips.filter(
-            (c) => c.videoHash === v.hash && c.id !== clip.id,
-          );
+          const remaining = clips.filter((c) => c.videoHash === v.hash && c.id !== clip.id);
           return {
             ...v,
             clipCount: remaining.length,
@@ -91,54 +94,77 @@ export function App() {
     [clips],
   );
 
-  const handleNavigate = useCallback(
-    (video: Video, clip: Clip) => open(video, clip),
-    [open],
-  );
-
   if (status !== "ready") {
     return (
       <main className="cm-app">
         <div className="cm-empty">
           <div className="cm-empty__glyph">∿</div>
-          <p>
-            {status === "loading"
-              ? "Loading the archive…"
-              : "Couldn't reach the Clipmark server."}
-          </p>
+          <p>{status === "loading" ? "Loading the archive…" : "Couldn't reach the Clipmark server."}</p>
         </div>
       </main>
     );
   }
 
-  if (target) {
+  const player = target && (
+    <PlayerPane
+      key={`${target.video.file}:${target.loopClip ? target.loopClip.id : "plain"}`}
+      video={target.video}
+      loopClip={target.loopClip}
+      orphan={!videos.some((v) => v.file === target.video.file)}
+      videos={videos}
+      clips={clips}
+      phone={isPhone}
+      onSave={handleSave}
+      onRemove={handleRemove}
+      onOpen={open}
+    />
+  );
+
+  if (isPhone) {
+    if (target) {
+      return (
+        <main className="cm-app cm-app--phone">
+          <header className="cm-phead">
+            <button className="cm-back" type="button" onClick={home}>
+              ‹ {folderLabel(dirname(target.video.file))}
+            </button>
+          </header>
+          <section className="cm-main">{player}</section>
+        </main>
+      );
+    }
     return (
-      <PlayerView
-        key={`${target.video.hash}:${target.loopClip ? target.loopClip.id : "plain"}`}
-        video={target.video}
-        loopClip={target.loopClip}
-        videos={videos}
-        clips={clips}
-        onSave={handleSave}
-        onRemove={handleRemove}
-        onBack={() => setTarget(null)}
-        onNavigate={handleNavigate}
+      <PhoneLibrary
+        tree={tree}
+        tagIndex={tagIndex}
+        tokens={tokens}
+        onTokens={setTokens}
+        folder={phoneFolder}
+        onFolder={setPhoneFolder}
+        scrollRef={phoneScroll}
+        onOpen={open}
       />
     );
   }
 
   return (
-    <LibraryView
-      tab={tab}
-      onTab={setTab}
-      tokens={tokens}
-      onTokens={setTokens}
-      tagIndex={tagIndex}
-      videos={videos}
-      clips={clips}
-      initialScrollTop={libScroll}
-      onOpenClip={(video, clip, scrollTop) => open(video, clip, scrollTop)}
-      onOpenVideo={(video, scrollTop) => open(video, null, scrollTop)}
-    />
+    <main className="cm-app">
+      <div className="cm-cols">
+        <Sidebar
+          tree={tree}
+          tagIndex={tagIndex}
+          tokens={tokens}
+          onTokens={setTokens}
+          target={target}
+          onHome={home}
+          onOpen={open}
+        />
+        {target ? (
+          <section className="cm-main">{player}</section>
+        ) : (
+          <IndexPane tree={tree} tokens={tokens} scrollRef={indexScroll} onOpen={open} />
+        )}
+      </div>
+    </main>
   );
 }

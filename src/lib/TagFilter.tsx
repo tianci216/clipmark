@@ -6,10 +6,13 @@ export function TagFilter({
   index,
   tokens,
   onTokens,
+  compact = false,
 }: {
   index: TagEntry[];
   tokens: string[];
   onTokens: (tokens: string[]) => void;
+  /** Sidebar variant: no label, tighter input. */
+  compact?: boolean;
 }) {
   const [draft, setDraft] = useState("");
   const [show, setShow] = useState(false);
@@ -30,17 +33,17 @@ export function TagFilter({
   const remove = (token: string) => onTokens(tokens.filter((t) => t !== token));
 
   return (
-    <div className="tagfilter">
-      <span className="tagfilter__label">Tags</span>
+    <div className={"cm-tf" + (compact ? " cm-tf--compact" : "")}>
+      {!compact && <span className="cm-tf__label">Tags</span>}
       {tokens.map((t) => (
-        <span className="tagfilter__token" key={t}>
+        <span className="cm-tf__tok" key={t}>
           {t}
           <button onClick={() => remove(t)} aria-label={`Remove tag ${t}`}>
             ✕
           </button>
         </span>
       ))}
-      <div className="tagfilter__box">
+      <div className="cm-tf__box">
         <input
           ref={inputRef}
           value={draft}
@@ -67,7 +70,7 @@ export function TagFilter({
           }}
         />
         {show && suggestions.length > 0 && (
-          <div className="tagfilter__suggest">
+          <div className="cm-tf__sugg">
             {suggestions.map((s) => (
               <button
                 key={s}
