@@ -109,6 +109,27 @@ function walkVideoFiles(dir: string, relDir: string, out: VideoFile[]): void {
   }
 }
 
+/** Every subfolder of the Library Folder (folder-relative, sorted, dot-folders skipped); [] when missing. */
+export function listSubfolders(videoDir: string): string[] {
+  const out: string[] = [];
+  const walk = (dir: string, rel: string) => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+      out.push(childRel);
+      walk(path.join(dir, entry.name), childRel);
+    }
+  };
+  walk(videoDir, "");
+  return out;
+}
+
 /** Every video file under the folder (no hashing or probing); [] when the folder is missing. */
 export function listVideoFiles(videoDir: string): VideoFile[] {
   const files: VideoFile[] = [];

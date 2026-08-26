@@ -18,6 +18,7 @@ ClipMark marks and tags time ranges in dance videos so they can be searched and 
 
 - Node.js >= 20
 - `ffmpeg` / `ffprobe` on your `PATH` (used to extract video durations and thumbnails)
+- `yt-dlp` (optional, for **+ Download**) in `/opt/homebrew/bin`, `/usr/local/bin` or `/usr/bin` — `brew install yt-dlp`. Settings shows the detected version, or the install hint.
 - A folder of `.mp4` / `.mov` dance videos
 
 ## Installation
@@ -99,6 +100,8 @@ Now you can launch ClipMark from anywhere with `clipmark`. The Library Folder is
 - **State preserved** — going back from the player returns you to your exact spot: tab, filter, and scroll position.
 - **Mobile** — works on a phone over Tailscale: single-column grid and a stacked player.
 
+- **+ Download** — paste a link, pick the top level or any existing subfolder, press Download. yt-dlp fetches the video in the background (one at a time, in order) as `<title> [<id>].mp4` — H.264/AAC so the player can scrub it, one video even from a playlist link. The in-flight Download shows as a row inside its folder with a progress bar, Cancel (removes any `.part`/`.ytdl` leftovers) or, on failure, yt-dlp's error and Dismiss. When it lands the library refreshes and a toast offers Open. Downloads are in-memory: a restart forgets the queue.
+- **Cookies from browser** — yt-dlp reads Chrome's cookies by default (Settings: none / Chrome / Safari / Firefox) so links that fail anonymously succeed. The first read triggers a one-time macOS Keychain prompt on the Mac — press **Test cookie access** in Settings to grant it up front; a Download started from your phone that shows no progress is probably waiting on that prompt. Chrome may need to be closed while its cookies are read.
 - **Settings** — the Library Folder field with a readback of the resolved path and how many videos were found, plus the Tailscale and LAN addresses to type on your phone (with Copy). Clips on videos outside the current Library Folder are hidden, not deleted, so switching folders is reversible.
 
 All clip data is saved locally in a SQLite database at `data/clipmark.db` (or `$CLIPMARK_DATA_DIR/clipmark.db`). Videos are tracked by a content hash, so renaming or moving files within the Library Folder won't break your clips.
@@ -107,5 +110,5 @@ All clip data is saved locally in a SQLite database at `data/clipmark.db` (or `$
 
 - `npm run dev` — Vite dev server (with hot reload) proxying `/api`, `/video`, and `/thumbnails` to a `tsx watch` Express process.
 - `npm run build` — builds both the server (`server/*.js`) and the client (`dist/`).
-- `npm test` — vitest suite covering the SQLite store, the scanner, the YAML migration importer, the library tree model, and an HTTP-level suite over the Express app (settings, live folder apply, hidden clips, address derivation).
+- `npm test` — vitest suite covering the SQLite store, the scanner, the YAML migration importer, the library tree model, and an HTTP-level suite over the Express app (settings, live folder apply, hidden clips, address derivation, the Download queue with a scripted fake downloader: order, progress, completion, cancel cleanup, failure, folder validation, cookie test, yt-dlp status).
 - `npm run typecheck` — type-checks both client and server.

@@ -63,6 +63,7 @@ async function start(opts: Partial<AppOptions> = {}): Promise<void> {
     networkInterfaces: TAILSCALE_UP,
     env: {},
     port: 8899,
+    downloader: fakeDownloader(null).downloader,
     ...opts,
   });
   await new Promise<void>((resolve) => {
@@ -105,6 +106,8 @@ describe("GET /api/settings", () => {
       tailscaleIp: "100.101.102.103",
       lanIp: "192.168.1.23",
       port: 8899,
+      cookiesFromBrowser: "chrome",
+      ytDlp: null,
     });
   });
 
@@ -160,7 +163,7 @@ describe("PUT /api/settings", () => {
 describe("Library Folder applies live", () => {
   it("serves an empty library and no streams until a folder is set", async () => {
     await start();
-    expect((await get("/api/tree")).body).toEqual({ videos: [] });
+    expect((await get("/api/tree")).body).toEqual({ videos: [], folders: [] });
     expect((await get("/api/clips")).body).toEqual([]);
     expect((await fetch(base + "/video/a.mp4")).status).toBe(403);
   });
@@ -183,6 +186,22 @@ describe("Library Folder applies live", () => {
     expect(await stream.text()).toBe("beta bytes");
     expect((await fetch(base + "/video/alpha.mp4")).status).toBe(404);
     expect((await fetch(base + "/video/..%2FA%2Falpha.mp4")).status).toBe(403);
+  });
+});
+
+describe("GET /api/tree folders", () => {
+  it("lists every subfolder of the Library Folder, including empty ones, for the Download picker", async () => {
+    const lib = folder("lib", { "Choreography/Sweet Vanilla/a.mp4": "a", "notes.txt": "x" });
+    fs.mkdirSync(path.join(lib, "Classes"));
+    fs.mkdirSync(path.join(lib, ".hidden"));
+    await start({ env: { CLIPMARK_VIDEO_DIR: lib } });
+    const { body } = await get("/api/tree");
+    expect(body.folders).toEqual(["Choreography", "Choreography/Sweet Vanilla", "Classes"]);
+  });
+
+  it("is empty with no Library Folder", async () => {
+    await start();
+    expect((await get("/api/tree")).body).toEqual({ videos: [], folders: [] });
   });
 });
 
@@ -263,5 +282,251 @@ describe("Clips outside the Library Folder", () => {
     expect(clips).toHaveLength(1);
     expect(clips[0].file).toBe("alpha.mp4");
     expect(store.getVideos()[0].file).toBe(path.join(a, "alpha.mp4"));
+  });
+});
+
+/* ---------------- Downloads (fake downloader) ---------------- */
+
+import type { Downloader, DownloadEvents, DownloadRequest } from "../server/src/downloads";
+
+interface FakeRun {
+  request: DownloadRequest;
+  events: DownloadEvents;
+  cancelled: boolean;
+}
+
+/** Scripted downloader: the test drives progress / exit by hand. */
+function fakeDownloader(status: { path: string; version: string } | null = { path: "/opt/homebrew/bin/yt-dlp", version: "2026.06.09" }) {
+  const runs: FakeRun[] = [];
+  let cookieResult: { ok: boolean; output: string } = { ok: true, output: "" };
+  const downloader: Downloader = {
+    start(request, events) {
+      const run: FakeRun = { request, events, cancelled: false };
+      runs.push(run);
+      return {
+        cancel: () => {
+          run.cancelled = true;
+        },
+      };
+    },
+    testCookies: async () => cookieResult,
+    status: async () => status,
+  };
+  return {
+    downloader,
+    runs,
+    setCookieResult(r: { ok: boolean; output: string }) {
+      cookieResult = r;
+    },
+    /** Pretend yt-dlp wrote a partial file, then finished with the final file. */
+    finish(run: FakeRun, filename: string) {
+      const dir = path.dirname(run.request.outputTemplate);
+      fs.writeFileSync(path.join(dir, filename), "video bytes");
+      run.events.onExit({ code: 0, filepath: path.join(dir, filename), stderrTail: "" });
+    },
+    fail(run: FakeRun, stderr: string) {
+      run.events.onExit({ code: 1, filepath: null, stderrTail: stderr });
+    },
+  };
+}
+
+const settle = () => new Promise((r) => setTimeout(r, 5));
+
+describe("POST /api/downloads", () => {
+  it("queues a job for a subfolder and reports it with progress, then the landed file", async () => {
+    const lib = folder("lib", { "Classes/old.mp4": "old" });
+    const fake = fakeDownloader();
+    await start({ env: { CLIPMARK_VIDEO_DIR: lib }, downloader: fake.downloader });
+
+    const created = await post("/api/downloads", { url: "https://youtu.be/abc", folder: "Classes" });
+    expect(created.status).toBe(202);
+    expect(typeof created.body.id).toBe("number");
+    await settle();
+
+    expect(fake.runs).toHaveLength(1);
+    expect(fake.runs[0].request.url).toBe("https://youtu.be/abc");
+    expect(fake.runs[0].request.outputTemplate).toBe(
+      path.join(lib, "Classes", "%(title)s [%(id)s].%(ext)s"),
+    );
+    expect(fake.runs[0].request.cookiesFromBrowser).toBe("chrome");
+
+    fake.runs[0].events.onTitle("Swing out drills");
+    fake.runs[0].events.onProgress(42.5);
+    let list = (await get("/api/downloads")).body;
+    expect(list).toEqual([
+      expect.objectContaining({
+        id: created.body.id,
+        url: "https://youtu.be/abc",
+        folder: "Classes",
+        state: "running",
+        progress: 42.5,
+        title: "Swing out drills",
+      }),
+    ]);
+
+    fake.finish(fake.runs[0], "Swing out drills [abc].mp4");
+    list = (await get("/api/downloads")).body;
+    expect(list[0]).toMatchObject({
+      state: "done",
+      progress: 100,
+      file: "Classes/Swing out drills [abc].mp4",
+    });
+    const tree = (await get("/api/tree")).body;
+    expect(tree.videos.map((v: { file: string }) => v.file)).toContain("Classes/Swing out drills [abc].mp4");
+  });
+
+  it("runs two jobs one at a time, in order", async () => {
+    const lib = folder("lib");
+    const fake = fakeDownloader();
+    await start({ env: { CLIPMARK_VIDEO_DIR: lib }, downloader: fake.downloader });
+
+    const a = await post("/api/downloads", { url: "https://a", folder: "" });
+    const b = await post("/api/downloads", { url: "https://b" });
+    await settle();
+    expect(fake.runs.map((r) => r.request.url)).toEqual(["https://a"]);
+    let list = (await get("/api/downloads")).body;
+    expect(list.map((j: { id: number; state: string }) => [j.id, j.state])).toEqual([
+      [a.body.id, "running"],
+      [b.body.id, "queued"],
+    ]);
+
+    fake.finish(fake.runs[0], "A [a].mp4");
+    await settle();
+    expect(fake.runs.map((r) => r.request.url)).toEqual(["https://a", "https://b"]);
+    list = (await get("/api/downloads")).body;
+    expect(list.find((j: { id: number }) => j.id === b.body.id).state).toBe("running");
+    expect(list.find((j: { id: number }) => j.id === b.body.id).folder).toBe("");
+  });
+
+  it("rejects a missing URL, a folder outside the Library Folder, and a folder that does not exist", async () => {
+    const lib = folder("lib", { "Classes/old.mp4": "old" });
+    folder("Elsewhere");
+    const fake = fakeDownloader();
+    await start({ env: { CLIPMARK_VIDEO_DIR: lib }, downloader: fake.downloader });
+
+    expect((await post("/api/downloads", { folder: "Classes" })).status).toBe(400);
+    expect((await post("/api/downloads", { url: "notaurl", folder: "Classes" })).status).toBe(400);
+    for (const bad of ["../Elsewhere", "/Elsewhere", "Nope", "Classes/old.mp4"]) {
+      const { status, body } = await post("/api/downloads", { url: "https://x", folder: bad });
+      expect(status, bad).toBe(400);
+      expect(typeof body.error).toBe("string");
+    }
+    await settle();
+    expect(fake.runs).toHaveLength(0);
+    expect((await get("/api/downloads")).body).toEqual([]);
+  });
+
+  it("refuses to download when no Library Folder is set", async () => {
+    const fake = fakeDownloader();
+    await start({ downloader: fake.downloader });
+    const { status, body } = await post("/api/downloads", { url: "https://x" });
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/Library Folder/);
+  });
+});
+
+describe("DELETE /api/downloads/:id", () => {
+  it("cancels a running job and removes its partial files", async () => {
+    const lib = folder("lib", { "Classes/keep.mp4.part": "not ours" });
+    const fake = fakeDownloader();
+    await start({ env: { CLIPMARK_VIDEO_DIR: lib }, downloader: fake.downloader });
+    const { body } = await post("/api/downloads", { url: "https://x", folder: "Classes" });
+    await settle();
+    const run = fake.runs[0];
+    fs.writeFileSync(path.join(lib, "Classes", "Thing [x].f137.mp4.part"), "half");
+    fs.writeFileSync(path.join(lib, "Classes", "Thing [x].f137.mp4.ytdl"), "state");
+
+    const del = await request("DELETE", `/api/downloads/${body.id}`);
+    expect(del.status).toBe(204);
+    expect(run.cancelled).toBe(true);
+    // yt-dlp exits after the SIGINT; the queue then cleans up and forgets the job.
+    run.events.onExit({ code: 130, filepath: null, stderrTail: "" });
+    await settle();
+
+    expect((await get("/api/downloads")).body).toEqual([]);
+    expect(fs.readdirSync(path.join(lib, "Classes")).sort()).toEqual(["keep.mp4.part"]);
+  });
+
+  it("drops a queued job before it starts", async () => {
+    const lib = folder("lib");
+    const fake = fakeDownloader();
+    await start({ env: { CLIPMARK_VIDEO_DIR: lib }, downloader: fake.downloader });
+    await post("/api/downloads", { url: "https://a" });
+    const b = await post("/api/downloads", { url: "https://b" });
+    await settle();
+    expect((await request("DELETE", `/api/downloads/${b.body.id}`)).status).toBe(204);
+    fake.finish(fake.runs[0], "A [a].mp4");
+    await settle();
+    expect(fake.runs).toHaveLength(1);
+    expect((await get("/api/downloads")).body.map((j: { url: string }) => j.url)).toEqual(["https://a"]);
+  });
+
+  it("reports a failure with the stderr tail, cleans up, and lets the row be dismissed", async () => {
+    const lib = folder("lib");
+    const fake = fakeDownloader();
+    await start({ env: { CLIPMARK_VIDEO_DIR: lib }, downloader: fake.downloader });
+    const { body } = await post("/api/downloads", { url: "https://x" });
+    await settle();
+    fs.writeFileSync(path.join(lib, "Thing [x].mp4.part"), "half");
+    fake.fail(fake.runs[0], "ERROR: [youtube] x: Video unavailable");
+    await settle();
+
+    const [job] = (await get("/api/downloads")).body;
+    expect(job).toMatchObject({ state: "failed", error: "ERROR: [youtube] x: Video unavailable" });
+    expect(fs.readdirSync(lib)).toEqual([]);
+
+    expect((await request("DELETE", `/api/downloads/${body.id}`)).status).toBe(204);
+    expect((await get("/api/downloads")).body).toEqual([]);
+    expect((await request("DELETE", `/api/downloads/${body.id}`)).status).toBe(404);
+  });
+});
+
+describe("cookies from browser", () => {
+  it("defaults to chrome, persists a change, and omits the flag when none", async () => {
+    const lib = folder("lib");
+    const fake = fakeDownloader();
+    await start({ env: { CLIPMARK_VIDEO_DIR: lib }, downloader: fake.downloader });
+    expect((await get("/api/settings")).body.cookiesFromBrowser).toBe("chrome");
+
+    expect((await put("/api/settings", { cookiesFromBrowser: "edge" })).status).toBe(400);
+    const saved = await put("/api/settings", { cookiesFromBrowser: "none" });
+    expect(saved.status).toBe(200);
+    expect(saved.body.cookiesFromBrowser).toBe("none");
+    expect(saved.body.libraryFolder).toBe(lib);
+    expect((await get("/api/settings")).body.cookiesFromBrowser).toBe("none");
+
+    await post("/api/downloads", { url: "https://x" });
+    await settle();
+    expect(fake.runs[0].request.cookiesFromBrowser).toBeNull();
+  });
+
+  it("POST /api/downloads/test-cookies reports success or yt-dlp's error", async () => {
+    const fake = fakeDownloader();
+    await start({ downloader: fake.downloader });
+    expect((await post("/api/downloads/test-cookies", {})).body).toEqual({ ok: true, browser: "chrome" });
+
+    fake.setCookieResult({ ok: false, output: "ERROR: Could not copy Chrome cookie database" });
+    expect((await post("/api/downloads/test-cookies", {})).body).toEqual({
+      ok: false,
+      browser: "chrome",
+      error: "ERROR: Could not copy Chrome cookie database",
+    });
+
+    await put("/api/settings", { cookiesFromBrowser: "none" });
+    expect((await post("/api/downloads/test-cookies", {})).status).toBe(400);
+  });
+});
+
+describe("yt-dlp status", () => {
+  it("is reported in the settings response, or null when not installed", async () => {
+    await start({ downloader: fakeDownloader().downloader });
+    expect((await get("/api/settings")).body.ytDlp).toEqual({
+      path: "/opt/homebrew/bin/yt-dlp",
+      version: "2026.06.09",
+    });
+    await new Promise<void>((r) => server!.close(() => r()));
+    server = null;
+    await start({ downloader: fakeDownloader(null).downloader });
+    expect((await get("/api/settings")).body.ytDlp).toBeNull();
   });
 });

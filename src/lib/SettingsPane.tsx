@@ -1,5 +1,21 @@
 import { useState, type FormEvent } from "react";
-import { saveLibraryFolder, type SavedSettings, type Settings } from "./api";
+import {
+  COOKIE_BROWSERS,
+  saveLibraryFolder,
+  saveSettings,
+  testCookies,
+  type CookieTest,
+  type CookiesFromBrowser,
+  type SavedSettings,
+  type Settings,
+} from "./api";
+
+const BROWSER_LABEL: Record<CookiesFromBrowser, string> = {
+  none: "None",
+  chrome: "Chrome",
+  safari: "Safari",
+  firefox: "Firefox",
+};
 
 /**
  * Settings: the Library Folder field with validation readback, and the address to
@@ -77,6 +93,8 @@ export function SettingsPane({
           </p>
         </form>
 
+        <DownloadsBlock settings={settings} onSaved={onSaved} />
+
         <div className="cm-settings__block">
           <div className="cm-eyebrow">On your phone</div>
           {settings.tailscaleIp ? (
@@ -93,6 +111,101 @@ export function SettingsPane({
         </div>
       </div>
     </section>
+  );
+}
+
+/** Cookies-from-browser choice, the Keychain test, and the yt-dlp status line. */
+function DownloadsBlock({
+  settings,
+  onSaved,
+}: {
+  settings: Settings;
+  onSaved: (saved: SavedSettings) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [test, setTest] = useState<CookieTest | "testing" | null>(null);
+  const browser = settings.cookiesFromBrowser;
+
+  const change = async (next: CookiesFromBrowser) => {
+    setBusy(true);
+    setError(null);
+    setTest(null);
+    try {
+      onSaved(await saveSettings({ cookiesFromBrowser: next }));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runTest = async () => {
+    setTest("testing");
+    try {
+      setTest(await testCookies());
+    } catch (err) {
+      setTest({ ok: false, browser, error: (err as Error).message });
+    }
+  };
+
+  return (
+    <div className="cm-settings__block">
+      <div className="cm-eyebrow">Downloads</div>
+      <p className="cm-settings__addr">
+        <span className="cm-settings__addr-label">yt-dlp</span>
+        {settings.ytDlp ? (
+          <span className="cm-mono cm-settings__url">
+            {settings.ytDlp.version} · {settings.ytDlp.path}
+          </span>
+        ) : (
+          <span className="cm-settings__missing">
+            not found — <span className="cm-mono">brew install yt-dlp</span>
+          </span>
+        )}
+      </p>
+      <p className="cm-settings__addr">
+        <label className="cm-settings__addr-label" htmlFor="cm-cookies">
+          Cookies
+        </label>
+        <select
+          id="cm-cookies"
+          className="cm-settings__select"
+          value={browser}
+          disabled={busy}
+          onChange={(e) => change(e.target.value as CookiesFromBrowser)}
+        >
+          {COOKIE_BROWSERS.map((b) => (
+            <option key={b} value={b}>
+              {BROWSER_LABEL[b]}
+            </option>
+          ))}
+        </select>
+        <button
+          className="cm-actions__btn"
+          type="button"
+          disabled={browser === "none" || test === "testing"}
+          onClick={runTest}
+        >
+          {test === "testing" ? "Testing…" : "Test cookie access"}
+        </button>
+      </p>
+      {error && <div className="cm-error">{error}</div>}
+      {test && test !== "testing" && (
+        test.ok ? (
+          <p className="cm-settings__readback cm-mono">
+            {BROWSER_LABEL[test.browser as CookiesFromBrowser] ?? test.browser} cookies readable.
+          </p>
+        ) : (
+          <pre className="cm-error cm-settings__pre">{test.error}</pre>
+        )
+      )}
+      <p className="cm-settings__hint">
+        yt-dlp reads the browser's cookies so downloads that fail anonymously succeed. The first
+        read asks for Keychain access on the Mac — run the test once to grant it. Chrome may need
+        to be closed while its cookies are read.
+      </p>
+    </div>
   );
 }
 

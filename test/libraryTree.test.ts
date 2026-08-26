@@ -133,3 +133,37 @@ describe("buildLibraryTree", () => {
     expect(tree.totals.videos).toBe(2);
   });
 });
+
+describe("buildLibraryTree with Downloads", () => {
+  const job = (id: number, folder: string, state: "queued" | "running" | "done" | "failed" | "cancelled" = "running") => ({
+    id,
+    url: "https://x",
+    folder,
+    state,
+    progress: 10,
+    title: null,
+    file: null,
+    error: null,
+    startedAt: null,
+  });
+
+  it("lists each Download inside its folder, creating the folder when it has no Videos yet", () => {
+    const tree = buildLibraryTree([lindy], [], [], [job(1, "Classes"), job(2, "Practice recordings"), job(3, "")]);
+    expect(tree.folders.map((f) => [f.path, f.downloads.map((d) => d.id)])).toEqual([
+      ["", [3]],
+      ["Classes", [1]],
+      ["Practice recordings", [2]],
+    ]);
+    expect(tree.folders[1].videos.map((r) => r.video.file)).toEqual(["Classes/lindy.mp4"]);
+    // Downloads are not Videos: the footnote counts do not change.
+    expect(tree.totals.videos).toBe(1);
+    expect(tree.totals.folders).toBe(1);
+  });
+
+  it("keeps Download rows visible while a tag filter is active", () => {
+    const tree = buildLibraryTree([lindy], [clip(1, "bbb", lindy.file, 3, ["swing out"])], ["nothing"], [job(1, "Classes")]);
+    expect(tree.folders.map((f) => f.path)).toEqual(["Classes"]);
+    expect(tree.folders[0].videos).toEqual([]);
+    expect(tree.folders[0].downloads.map((d) => d.id)).toEqual([1]);
+  });
+});

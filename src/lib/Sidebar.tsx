@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import type { Clip, Video } from "./api";
 import { Actions } from "./Actions";
+import type { DownloadControls } from "./downloadControls";
+import { DownloadRow } from "./DownloadRow";
 import { folderLabel, formatTime, title } from "./format";
 import type { LibraryTree } from "./libraryTree";
 import { TagFilter } from "./TagFilter";
@@ -21,6 +23,7 @@ export function Sidebar({
   onHome,
   onOpen,
   onSettings,
+  downloads,
 }: {
   tree: LibraryTree;
   tagIndex: TagEntry[];
@@ -30,6 +33,7 @@ export function Sidebar({
   onHome: () => void;
   onOpen: (video: Video, clip: Clip | null) => void;
   onSettings: () => void;
+  downloads: DownloadControls;
 }) {
   const treeRef = useRef<HTMLElement>(null);
   const selectedFile = target?.video.file;
@@ -89,6 +93,9 @@ export function Sidebar({
                 </div>
               );
             })}
+            {folder.downloads.map((d) => (
+              <DownloadRow key={d.id} download={d} controls={downloads} />
+            ))}
           </div>
         ))}
         {tree.folders.length === 0 && (
@@ -98,7 +105,7 @@ export function Sidebar({
         )}
       </nav>
       <div className="cm-side__foot">
-        <Actions onSettings={onSettings} />
+        <Actions downloads={downloads} onSettings={onSettings} />
       </div>
     </aside>
   );

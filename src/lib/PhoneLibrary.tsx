@@ -1,6 +1,8 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
 import type { Clip, Video } from "./api";
 import { Actions } from "./Actions";
+import { DownloadRow } from "./DownloadRow";
+import type { DownloadControls } from "./downloadControls";
 import { folderLabel, formatTime, title } from "./format";
 import { Footnote } from "./IndexPane";
 import type { LibraryTree } from "./libraryTree";
@@ -19,6 +21,7 @@ export function PhoneLibrary({
   scrollRef,
   onOpen,
   onSettings,
+  downloads,
 }: {
   tree: LibraryTree;
   tagIndex: TagEntry[];
@@ -31,6 +34,7 @@ export function PhoneLibrary({
   scrollRef: MutableRefObject<number>;
   onOpen: (video: Video, clip: Clip | null) => void;
   onSettings: () => void;
+  downloads: DownloadControls;
 }) {
   const el = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -63,7 +67,7 @@ export function PhoneLibrary({
             Clipmark<span>.</span>
           </div>
         )}
-        <Actions onSettings={onSettings} />
+        <Actions downloads={downloads} onSettings={onSettings} />
       </header>
       <div className="cm-pfilter">
         <TagFilter index={tagIndex} tokens={tokens} onTokens={onTokens} compact />
@@ -73,6 +77,7 @@ export function PhoneLibrary({
           <ul className="cm-list">
             {tree.folders.map((f) => {
               const clipCount = f.videos.reduce((n, v) => n + v.visibleClips.length, 0);
+              const active = f.downloads.length;
               return (
                 <li key={f.path}>
                   <button
@@ -89,6 +94,7 @@ export function PhoneLibrary({
                       <span className="cm-row__meta cm-mono">
                         {f.videos.length} video{f.videos.length === 1 ? "" : "s"} · {clipCount} clip
                         {clipCount === 1 ? "" : "s"}
+                        {active > 0 ? ` · ${active} download${active === 1 ? "" : "s"}` : ""}
                       </span>
                     </span>
                   </button>
@@ -138,6 +144,11 @@ export function PhoneLibrary({
                       </li>
                     ))}
                   </ul>
+                </li>
+              ))}
+              {(current?.downloads ?? []).map((d) => (
+                <li key={`dl-${d.id}`}>
+                  <DownloadRow download={d} controls={downloads} />
                 </li>
               ))}
               {!current && (

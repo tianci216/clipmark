@@ -33,5 +33,5 @@ The single directory the app scans for Videos. A Video is part of the library on
 _Avoid_: Video dir, root, source folder
 
 **Download**:
-An in-flight fetch of an online video into the Library Folder. It becomes a Video once the file has landed.
+An in-flight fetch of an online video into the Library Folder. It becomes a Video once the file has landed. Runs one at a time, in order; not persisted (ADR-0006).
 _Avoid_: Job, fetch, import

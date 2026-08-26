@@ -11,6 +11,24 @@ import type { Store } from "./store.js";
 
 export const LIBRARY_FOLDER_KEY = "library_folder";
 export const LIBRARY_FOLDER_ENV = "CLIPMARK_VIDEO_DIR";
+export const COOKIES_KEY = "cookies_from_browser";
+export type CookiesFromBrowser = "none" | "chrome" | "safari" | "firefox";
+export const COOKIE_BROWSERS: readonly CookiesFromBrowser[] = ["none", "chrome", "safari", "firefox"];
+export const DEFAULT_COOKIES: CookiesFromBrowser = "chrome";
+
+/** Browser yt-dlp reads cookies from; Chrome unless the user changed it. */
+export function getCookiesFromBrowser(store: Store): CookiesFromBrowser {
+  const value = store.getSetting(COOKIES_KEY);
+  return isCookiesFromBrowser(value) ? value : DEFAULT_COOKIES;
+}
+
+export function setCookiesFromBrowser(store: Store, browser: CookiesFromBrowser): void {
+  store.setSetting(COOKIES_KEY, browser);
+}
+
+export function isCookiesFromBrowser(input: unknown): input is CookiesFromBrowser {
+  return typeof input === "string" && (COOKIE_BROWSERS as readonly string[]).includes(input);
+}
 
 export function getLibraryFolder(store: Store): string | null {
   return store.getSetting(LIBRARY_FOLDER_KEY);

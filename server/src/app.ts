@@ -4,10 +4,19 @@ import path from "node:path";
 import type { Request, Response } from "express";
 import express from "express";
 import { PORT, walkUp } from "./config.js";
-import { listVideoFiles, realDeps, scanVideoDir, type ScanDeps } from "./scanner.js";
+import {
+  DownloadQueue,
+  isHttpUrl,
+  validateDestination,
+  type Downloader,
+} from "./downloads.js";
+import { listSubfolders, listVideoFiles, realDeps, scanVideoDir, type ScanDeps } from "./scanner.js";
 import {
   deriveAddresses,
+  getCookiesFromBrowser,
   getLibraryFolder,
+  isCookiesFromBrowser,
+  setCookiesFromBrowser,
   isUnderFolder,
   relativeToFolder,
   seedLibraryFolder,
@@ -17,6 +26,7 @@ import {
 } from "./settings.js";
 import type { Clip, ClipInput, Store } from "./store.js";
 import { mimeForFile, parseRange, resolveVideoPath } from "./videoStream.js";
+import { createYtDlpDownloader } from "./ytdlp.js";
 
 function findDistDir(): string | null {
   const found = walkUp(import.meta.dirname, "dist/index.html");
@@ -66,6 +76,8 @@ export interface AppOptions {
   env?: Record<string, string | undefined>;
   /** Port reported in /api/settings (the one the server listens on). */
   port?: number;
+  /** Wraps the yt-dlp process; tests inject a scripted fake. */
+  downloader?: Downloader;
 }
 
 export function createApp({
@@ -75,15 +87,19 @@ export function createApp({
   networkInterfaces = os.networkInterfaces,
   env = process.env,
   port = PORT,
+  downloader = createYtDlpDownloader(),
 }: AppOptions) {
   seedLibraryFolder(store, env);
   // Read per request (ADR-0005) so a PUT applies to the next scan and stream.
   const libraryFolder = () => getLibraryFolder(store);
+  const downloads = new DownloadQueue(downloader);
 
-  const settingsResponse = () => ({
+  const settingsResponse = async () => ({
     libraryFolder: libraryFolder(),
     ...deriveAddresses(networkInterfaces),
     port,
+    cookiesFromBrowser: getCookiesFromBrowser(store),
+    ytDlp: await downloader.status(),
   });
 
   /** A Clip as the API exposes it — folder-relative path — or null when it is hidden (Video outside the folder). */
@@ -97,19 +113,96 @@ export function createApp({
     res.json({ ok: true });
   });
 
-  app.get("/api/settings", (_req, res) => {
-    res.json(settingsResponse());
+  app.get(
+    "/api/settings",
+    asyncHandler(async (_req, res) => {
+      res.json(await settingsResponse());
+    }),
+  );
+
+  // Partial update: each key present is validated and saved; nothing is saved on any error.
+  app.put(
+    "/api/settings",
+    asyncHandler(async (req, res) => {
+      const body = (req.body ?? {}) as { libraryFolder?: unknown; cookiesFromBrowser?: unknown };
+      if (body.libraryFolder === undefined && body.cookiesFromBrowser === undefined) {
+        res.status(400).json({ error: "Nothing to save." });
+        return;
+      }
+      const folderResult = body.libraryFolder === undefined ? null : validateLibraryFolder(body.libraryFolder);
+      if (folderResult && !folderResult.ok) {
+        res.status(400).json({ error: folderResult.error });
+        return;
+      }
+      if (body.cookiesFromBrowser !== undefined && !isCookiesFromBrowser(body.cookiesFromBrowser)) {
+        res.status(400).json({ error: "Cookies from browser must be none, chrome, safari or firefox." });
+        return;
+      }
+      if (folderResult?.ok) setLibraryFolder(store, folderResult.folder);
+      if (isCookiesFromBrowser(body.cookiesFromBrowser)) setCookiesFromBrowser(store, body.cookiesFromBrowser);
+      const folder = libraryFolder();
+      res.json({
+        ...(await settingsResponse()),
+        videoCount: folder === null ? 0 : listVideoFiles(folder).length,
+      });
+    }),
+  );
+
+  app.get("/api/downloads", (_req, res) => {
+    res.json(downloads.list());
   });
 
-  app.put("/api/settings", (req, res) => {
-    const body = (req.body ?? {}) as { libraryFolder?: unknown };
-    const result = validateLibraryFolder(body.libraryFolder);
-    if (!result.ok) {
-      res.status(400).json({ error: result.error });
+  app.post("/api/downloads", (req, res) => {
+    const body = (req.body ?? {}) as { url?: unknown; folder?: unknown };
+    if (!isHttpUrl(body.url)) {
+      res.status(400).json({ error: "Paste an http(s) link to a video." });
       return;
     }
-    setLibraryFolder(store, result.folder);
-    res.json({ ...settingsResponse(), videoCount: listVideoFiles(result.folder).length });
+    const folder = libraryFolder();
+    if (folder === null) {
+      res.status(400).json({ error: "Choose a Library Folder in Settings before downloading." });
+      return;
+    }
+    const dest = validateDestination(folder, body.folder);
+    if (!dest.ok) {
+      res.status(400).json({ error: dest.error });
+      return;
+    }
+    const job = downloads.enqueue({
+      url: body.url.trim(),
+      libraryFolder: folder,
+      folder: dest.folder,
+      destination: dest.destination,
+      cookiesFromBrowser: getCookiesFromBrowser(store),
+    });
+    res.status(202).json(job);
+  });
+
+  // Triggers the one-time macOS Keychain grant for the browser's cookie store.
+  app.post(
+    "/api/downloads/test-cookies",
+    asyncHandler(async (_req, res) => {
+      const browser = getCookiesFromBrowser(store);
+      if (browser === "none") {
+        res.status(400).json({ error: "Cookies are off — pick a browser first." });
+        return;
+      }
+      const result = await downloader.testCookies(browser);
+      res.json(result.ok ? { ok: true, browser } : { ok: false, browser, error: result.output });
+    }),
+  );
+
+  app.delete("/api/downloads/:id", (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: "A numeric download id is required." });
+      return;
+    }
+    if (!downloads.remove(id)) {
+      res.status(404).json({ error: "No such download." });
+      return;
+    }
+    res.status(204).end();
   });
 
   app.get(
@@ -117,7 +210,7 @@ export function createApp({
     asyncHandler(async (_req, res) => {
       const folder = libraryFolder();
       if (folder === null) {
-        res.json({ videos: [] });
+        res.json({ videos: [], folders: [] });
         return;
       }
       const scanned = await scanVideoDir(store, folder, thumbnailDir, scanDeps);
@@ -134,7 +227,7 @@ export function createApp({
           firstClipStart: stat?.firstClipStart ?? null,
         };
       });
-      res.json({ videos });
+      res.json({ videos, folders: listSubfolders(folder) });
     }),
   );
 

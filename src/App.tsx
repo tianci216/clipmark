@@ -3,13 +3,18 @@ import {
   createClip,
   deleteClip,
   fetchClips,
+  fetchDownloads,
   fetchSettings,
-  fetchVideos,
+  fetchTree,
+  removeDownload,
+  startDownload,
   type Clip,
   type ClipInput,
+  type Download,
   type Settings,
   type Video,
 } from "./lib/api";
+import type { DownloadControls } from "./lib/downloadControls";
 import { dirname, folderLabel } from "./lib/format";
 import { IndexPane } from "./lib/IndexPane";
 import { buildLibraryTree } from "./lib/libraryTree";
@@ -20,6 +25,12 @@ import { Sidebar, type Target } from "./lib/Sidebar";
 import { buildTagIndex } from "./lib/tags";
 import { PHONE_QUERY, useMedia } from "./lib/useMedia";
 
+const ACTIVE_STATES = new Set<Download["state"]>(["queued", "running", "cancelled"]);
+/** Poll fast while a Download is in flight, slowly otherwise (another device may start one). */
+const POLL_ACTIVE_MS = 1000;
+const POLL_IDLE_MS = 5000;
+const TOAST_MS = 8000;
+
 /**
  * Persistent Explorer shell (ADR-0001 amendment). Selection state lives here:
  * the tag filter, the target Video + loop Clip, the phone's drilled-into folder,
@@ -28,6 +39,8 @@ import { PHONE_QUERY, useMedia } from "./lib/useMedia";
  */
 export function App() {
   const [videos, setVideos] = useState<Video[]>([]);
+  // Every subfolder on disk (not just those with Videos) — the Download picker's options.
+  const [folders, setFolders] = useState<string[]>([]);
   const [clips, setClips] = useState<Clip[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [tokens, setTokens] = useState<string[]>([]);
@@ -36,14 +49,21 @@ export function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   // Settings replaces the main pane / screen; leaving it restores whatever was there.
   const [showSettings, setShowSettings] = useState(false);
+  const [downloads, setDownloads] = useState<Download[]>([]);
+  // Landed Downloads whose Video the refetch has not shown yet ("landed — scanning").
+  const [scanning, setScanning] = useState<Set<number>>(() => new Set());
+  const [toast, setToast] = useState<{ title: string; video: Video } | null>(null);
+  const landing = useRef(new Set<number>());
   const indexScroll = useRef(0);
   const phoneScroll = useRef(0);
   const isPhone = useMedia(PHONE_QUERY);
 
-  const loadLibrary = useCallback(async () => {
-    const [vs, cs] = await Promise.all([fetchVideos(), fetchClips()]);
-    setVideos(vs);
+  const loadLibrary = useCallback(async (): Promise<Video[]> => {
+    const [tree, cs] = await Promise.all([fetchTree(), fetchClips()]);
+    setVideos(tree.videos);
+    setFolders(tree.folders);
     setClips(cs);
+    return tree.videos;
   }, []);
 
   useEffect(() => {
@@ -57,8 +77,92 @@ export function App() {
       .catch(() => setStatus("error"));
   }, [loadLibrary]);
 
+  // Downloads: poll the queue, and when a file lands refetch the library until the
+  // new Video shows, then toast and drop the row (the server forgets it on DELETE).
+  const refreshDownloads = useCallback(async () => {
+    setDownloads(await fetchDownloads());
+  }, []);
+
+  const anyActive = downloads.some((d) => ACTIVE_STATES.has(d.state));
+  useEffect(() => {
+    if (status !== "ready") return;
+    refreshDownloads().catch(() => {});
+    const t = setInterval(
+      () => refreshDownloads().catch(() => {}),
+      anyActive ? POLL_ACTIVE_MS : POLL_IDLE_MS,
+    );
+    return () => clearInterval(t);
+  }, [status, anyActive, refreshDownloads]);
+
+  useEffect(() => {
+    for (const d of downloads) {
+      if (d.state !== "done" || !d.file || landing.current.has(d.id)) continue;
+      landing.current.add(d.id);
+      setScanning((prev) => new Set(prev).add(d.id));
+      const file = d.file;
+      (async () => {
+        const vs = await loadLibrary();
+        const video = vs.find((v) => v.file === file);
+        if (!video) {
+          // Not scanned yet — retry on the next poll.
+          landing.current.delete(d.id);
+          return;
+        }
+        setToast({ title: d.title ?? video.file, video });
+        await removeDownload(d.id);
+        setDownloads((prev) => prev.filter((x) => x.id !== d.id));
+      })()
+        .catch(() => landing.current.delete(d.id))
+        .finally(() =>
+          setScanning((prev) => {
+            const next = new Set(prev);
+            next.delete(d.id);
+            return next;
+          }),
+        );
+    }
+  }, [downloads, loadLibrary]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const handleStartDownload = useCallback(
+    async (url: string, folder: string) => {
+      const started = await startDownload(url, folder);
+      setDownloads((prev) => [...prev, started]);
+    },
+    [],
+  );
+
+  const handleRemoveDownload = useCallback((target: Download) => {
+    // Optimistic: a cancelled row reads "cancelling…" until the server forgets it.
+    setDownloads((prev) =>
+      target.state === "running"
+        ? prev.map((d) => (d.id === target.id ? { ...d, state: "cancelled" } : d))
+        : prev.filter((d) => d.id !== target.id),
+    );
+    removeDownload(target.id).catch(() => {});
+  }, []);
+
+  const downloadControls: DownloadControls = useMemo(
+    () => ({
+      folders,
+      activeCount: downloads.filter((d) => ACTIVE_STATES.has(d.state)).length,
+      scanning,
+      onStart: handleStartDownload,
+      onRemove: handleRemoveDownload,
+    }),
+    [folders, downloads, scanning, handleStartDownload, handleRemoveDownload],
+  );
+
   const tagIndex = useMemo(() => buildTagIndex(clips), [clips]);
-  const tree = useMemo(() => buildLibraryTree(videos, clips, tokens), [videos, clips, tokens]);
+  const tree = useMemo(
+    () => buildLibraryTree(videos, clips, tokens, downloads),
+    [videos, clips, tokens, downloads],
+  );
 
   const open = useCallback((video: Video, clip: Clip | null) => {
     setTarget({ video, loopClip: clip });
@@ -154,6 +258,25 @@ export function App() {
 
   const settingsPane = <SettingsPane settings={settings} onSaved={handleSaved} />;
 
+  const toastEl = toast && (
+    <div className="cm-toast" role="status">
+      <span className="cm-toast__text">Downloaded {toast.title}</span>
+      <button
+        className="cm-toast__btn"
+        type="button"
+        onClick={() => {
+          open(toast.video, null);
+          setToast(null);
+        }}
+      >
+        Open
+      </button>
+      <button className="cm-toast__btn" type="button" aria-label="Dismiss" onClick={() => setToast(null)}>
+        ×
+      </button>
+    </div>
+  );
+
   if (isPhone) {
     if (showSettings) {
       return (
@@ -164,6 +287,7 @@ export function App() {
             </button>
           </header>
           {settingsPane}
+          {toastEl}
         </main>
       );
     }
@@ -176,21 +300,26 @@ export function App() {
             </button>
           </header>
           <section className="cm-main">{player}</section>
+          {toastEl}
         </main>
       );
     }
     return (
-      <PhoneLibrary
-        tree={tree}
-        tagIndex={tagIndex}
-        tokens={tokens}
-        onTokens={setTokens}
-        folder={phoneFolder}
-        onFolder={setPhoneFolder}
-        scrollRef={phoneScroll}
-        onOpen={open}
-        onSettings={openSettings}
-      />
+      <>
+        <PhoneLibrary
+          tree={tree}
+          tagIndex={tagIndex}
+          tokens={tokens}
+          onTokens={setTokens}
+          folder={phoneFolder}
+          onFolder={setPhoneFolder}
+          scrollRef={phoneScroll}
+          onOpen={open}
+          onSettings={openSettings}
+          downloads={downloadControls}
+        />
+        {toastEl}
+      </>
     );
   }
 
@@ -206,6 +335,7 @@ export function App() {
           onHome={home}
           onOpen={open}
           onSettings={openSettings}
+          downloads={downloadControls}
         />
         {showSettings ? (
           settingsPane
@@ -215,6 +345,7 @@ export function App() {
           <IndexPane tree={tree} tokens={tokens} scrollRef={indexScroll} onOpen={open} />
         )}
       </div>
+      {toastEl}
     </main>
   );
 }

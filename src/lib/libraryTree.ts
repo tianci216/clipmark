@@ -1,4 +1,4 @@
-import type { Clip, Video } from "./api";
+import type { Clip, Download, Video } from "./api";
 import { dirname } from "./format";
 import { orphanVideoFor } from "./rail";
 import { matchesTokens } from "./tags";
@@ -20,6 +20,8 @@ export interface TreeFolder {
   /** Folder-relative path; "" is the Library Folder's top level. */
   path: string;
   videos: TreeVideo[];
+  /** Downloads landing in this folder, shown as rows beneath its Videos. */
+  downloads: Download[];
 }
 
 export interface LibraryTree {
@@ -33,6 +35,7 @@ export function buildLibraryTree(
   videos: Video[],
   clips: Clip[],
   tokens: string[],
+  downloads: Download[] = [],
 ): LibraryTree {
   const filtering = tokens.length > 0;
   const clipsByHash = new Map<string, Clip[]>();
@@ -75,11 +78,21 @@ export function buildLibraryTree(
     });
     byFolder.set(path, list);
   }
+  // A Download shows inside its folder even when the folder has no Videos (yet) or the
+  // filter hid them all — it is where the new Video will appear.
+  const downloadsByFolder = new Map<string, Download[]>();
+  for (const d of downloads) {
+    const list = downloadsByFolder.get(d.folder) ?? [];
+    list.push(d);
+    downloadsByFolder.set(d.folder, list);
+    if (!byFolder.has(d.folder)) byFolder.set(d.folder, []);
+  }
   const folders = [...byFolder.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([path, vs]) => ({
       path,
       videos: vs.sort((a, b) => a.video.file.localeCompare(b.video.file)),
+      downloads: downloadsByFolder.get(path) ?? [],
     }));
   const totals = {
     videos: rows.length,

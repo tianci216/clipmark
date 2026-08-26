@@ -18,8 +18,10 @@ export interface Clip {
   tags: string[];
 }
 
-interface TreeResponse {
+export interface TreeResponse {
   videos: Video[];
+  /** Every subfolder of the Library Folder (folder-relative), for the Download picker. */
+  folders: string[];
 }
 
 export function videoUrl(file: string): string {
@@ -33,11 +35,10 @@ export interface ClipInput {
   tags: string[];
 }
 
-export async function fetchVideos(): Promise<Video[]> {
+export async function fetchTree(): Promise<TreeResponse> {
   const res = await fetch("/api/tree");
   if (!res.ok) throw new Error(`GET /api/tree failed: ${res.status}`);
-  const body = (await res.json()) as TreeResponse;
-  return body.videos;
+  return (await res.json()) as TreeResponse;
 }
 
 export async function fetchClips(): Promise<Clip[]> {
@@ -72,12 +73,23 @@ export async function deleteClip(id: number): Promise<void> {
   }
 }
 
-/** GET /api/settings — the server-owned Library Folder (ADR-0005) plus the address readback. */
+export type CookiesFromBrowser = "none" | "chrome" | "safari" | "firefox";
+export const COOKIE_BROWSERS: readonly CookiesFromBrowser[] = ["none", "chrome", "safari", "firefox"];
+
+/** GET /api/settings — the server-owned Library Folder (ADR-0005), cookies, yt-dlp status, addresses. */
 export interface Settings {
   libraryFolder: string | null;
   tailscaleIp: string | null;
   lanIp: string | null;
   port: number;
+  cookiesFromBrowser: CookiesFromBrowser;
+  /** Installed yt-dlp, or null when not found. */
+  ytDlp: { path: string; version: string } | null;
+}
+
+export interface SettingsPatch {
+  libraryFolder?: string;
+  cookiesFromBrowser?: CookiesFromBrowser;
 }
 
 /** PUT /api/settings response: the saved settings plus how many video files the folder holds. */
@@ -91,21 +103,70 @@ export async function fetchSettings(): Promise<Settings> {
   return (await res.json()) as Settings;
 }
 
-export async function saveLibraryFolder(libraryFolder: string): Promise<SavedSettings> {
-  const res = await fetch("/api/settings", {
-    method: "PUT",
+async function send<T>(method: string, url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ libraryFolder }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
-    let message = `PUT /api/settings failed: ${res.status}`;
+    let message = `${method} ${url} failed: ${res.status}`;
     try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) message = body.error;
+      const json = (await res.json()) as { error?: string };
+      if (json.error) message = json.error;
     } catch {
       // keep the status message
     }
     throw new Error(message);
   }
-  return (await res.json()) as SavedSettings;
+  return (await res.json()) as T;
+}
+
+export function saveSettings(patch: SettingsPatch): Promise<SavedSettings> {
+  return send<SavedSettings>("PUT", "/api/settings", patch);
+}
+
+export function saveLibraryFolder(libraryFolder: string): Promise<SavedSettings> {
+  return saveSettings({ libraryFolder });
+}
+
+export type DownloadState = "queued" | "running" | "done" | "failed" | "cancelled";
+
+/** A Download: an in-flight fetch into the Library Folder; becomes a Video once landed. */
+export interface Download {
+  id: number;
+  url: string;
+  /** Folder-relative destination; "" is the top level. */
+  folder: string;
+  state: DownloadState;
+  progress: number;
+  title: string | null;
+  /** Folder-relative path of the landed file once done. */
+  file: string | null;
+  error: string | null;
+  startedAt: number | null;
+}
+
+export async function fetchDownloads(): Promise<Download[]> {
+  const res = await fetch("/api/downloads");
+  if (!res.ok) throw new Error(`GET /api/downloads failed: ${res.status}`);
+  return (await res.json()) as Download[];
+}
+
+export function startDownload(url: string, folder: string): Promise<Download> {
+  return send<Download>("POST", "/api/downloads", { url, folder });
+}
+
+/** Cancels a running Download, drops a queued one, or dismisses a finished row. */
+export async function removeDownload(id: number): Promise<void> {
+  const res = await fetch(`/api/downloads/${id}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204 && res.status !== 404) {
+    throw new Error(`DELETE /api/downloads/${id} failed: ${res.status}`);
+  }
+}
+
+export type CookieTest = { ok: true; browser: string } | { ok: false; browser: string; error: string };
+
+export function testCookies(): Promise<CookieTest> {
+  return send<CookieTest>("POST", "/api/downloads/test-cookies", {});
 }
