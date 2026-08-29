@@ -24,6 +24,22 @@ export function findYtDlp(dirs: string[] = YT_DLP_CANDIDATE_DIRS): string | null
   return null;
 }
 
+/**
+ * Environment for the yt-dlp child. The macOS shell inherits the bare GUI PATH
+ * (no /opt/homebrew/bin), so yt-dlp launched from the app could not find `deno`
+ * and warned "n challenge solving failed" — YouTube then served only the formats
+ * that need no JS challenge. Prepending the candidate dirs lets yt-dlp locate its
+ * JS runtime (deno/node) exactly as it does from a terminal.
+ */
+export function ytDlpEnv(
+  base: NodeJS.ProcessEnv = process.env,
+  dirs: string[] = YT_DLP_CANDIDATE_DIRS,
+): NodeJS.ProcessEnv {
+  const current = (base.PATH ?? "").split(":").filter(Boolean);
+  const merged = [...dirs, ...current.filter((d) => !dirs.includes(d))];
+  return { ...base, PATH: merged.join(":") };
+}
+
 /** avc1 + mp4a when the site has them, else anything, forced into an mp4 container. */
 const FORMAT = "bv*[vcodec^=avc1]+ba[acodec^=mp4a]/b[vcodec^=avc1][acodec^=mp4a]/bv*+ba/b";
 
@@ -89,7 +105,7 @@ export function createYtDlpDownloader(initialBinary: string | null = findYtDlp()
         );
         return { cancel() {} };
       }
-      const child = spawn(binary, buildArgs(request), { stdio: ["ignore", "pipe", "pipe"] });
+      const child = spawn(binary, buildArgs(request), { stdio: ["ignore", "pipe", "pipe"], env: ytDlpEnv() });
       const state = { filepath: null as string | null };
       let stderr = "";
       let stdoutBuf = "";
@@ -129,7 +145,7 @@ export function createYtDlpDownloader(initialBinary: string | null = findYtDlp()
         execFile(
           binary,
           ["--simulate", "--no-playlist", "--cookies-from-browser", browser, "--", COOKIE_TEST_URL],
-          { timeout: 120_000 },
+          { timeout: 120_000, env: ytDlpEnv() },
           (err, _stdout, stderr) => {
             resolve(err ? { ok: false, output: tail(String(stderr) || err.message) } : { ok: true, output: "" });
           },
@@ -143,7 +159,7 @@ export function createYtDlpDownloader(initialBinary: string | null = findYtDlp()
         if (!found) return Promise.resolve(null);
         binary = found;
         statusCache = new Promise((resolve) => {
-          execFile(found, ["--version"], { timeout: 15_000 }, (err, stdout) => {
+          execFile(found, ["--version"], { timeout: 15_000, env: ytDlpEnv() }, (err, stdout) => {
             if (err) statusCache = null;
             resolve(err ? null : { path: found, version: String(stdout).trim() });
           });
