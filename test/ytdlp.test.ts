@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { YT_DLP_CANDIDATE_DIRS, buildArgs, ytDlpEnv } from "../server/src/ytdlp.js";
 
-describe("ytDlpEnv", () => {
+describe("ytDlpEnv (toolEnv, shared with the scanner)", () => {
   it("prepends the candidate dirs to a bare GUI PATH so yt-dlp can find its JS runtime", () => {
     const env = ytDlpEnv({ PATH: "/usr/bin:/bin", HOME: "/Users/x" });
     expect(env.PATH).toBe([...YT_DLP_CANDIDATE_DIRS, "/bin"].join(":"));

@@ -1,6 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { TOOL_CANDIDATE_DIRS, toolEnv } from "./toolEnv.js";
 import type { Downloader, DownloadEvents, DownloadRequest, YtDlpStatus } from "./downloads.js";
 
 /**
@@ -9,7 +10,9 @@ import type { Downloader, DownloadEvents, DownloadRequest, YtDlpStatus } from ".
  * the Homebrew binary without PATH.
  */
 
-export const YT_DLP_CANDIDATE_DIRS = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"];
+export const YT_DLP_CANDIDATE_DIRS = TOOL_CANDIDATE_DIRS;
+/** @see toolEnv */
+export const ytDlpEnv = toolEnv;
 
 export function findYtDlp(dirs: string[] = YT_DLP_CANDIDATE_DIRS): string | null {
   for (const dir of dirs) {
@@ -24,21 +27,6 @@ export function findYtDlp(dirs: string[] = YT_DLP_CANDIDATE_DIRS): string | null
   return null;
 }
 
-/**
- * Environment for the yt-dlp child. The macOS shell inherits the bare GUI PATH
- * (no /opt/homebrew/bin), so yt-dlp launched from the app could not find `deno`
- * and warned "n challenge solving failed" — YouTube then served only the formats
- * that need no JS challenge. Prepending the candidate dirs lets yt-dlp locate its
- * JS runtime (deno/node) exactly as it does from a terminal.
- */
-export function ytDlpEnv(
-  base: NodeJS.ProcessEnv = process.env,
-  dirs: string[] = YT_DLP_CANDIDATE_DIRS,
-): NodeJS.ProcessEnv {
-  const current = (base.PATH ?? "").split(":").filter(Boolean);
-  const merged = [...dirs, ...current.filter((d) => !dirs.includes(d))];
-  return { ...base, PATH: merged.join(":") };
-}
 
 /** avc1 + mp4a when the site has them, else anything, forced into an mp4 container. */
 const FORMAT = "bv*[vcodec^=avc1]+ba[acodec^=mp4a]/b[vcodec^=avc1][acodec^=mp4a]/bv*+ba/b";

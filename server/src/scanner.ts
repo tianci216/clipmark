@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { Store } from "./store.js";
+import { toolEnv } from "./toolEnv.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -33,7 +34,7 @@ export async function probeDuration(file: string): Promise<number | null> {
         "-of", "default=noprint_wrappers=1:nokey=1",
         file,
       ],
-      { timeout: 15000 },
+      { timeout: 15000, env: toolEnv() },
     );
     const seconds = Number.parseFloat(stdout.trim());
     return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
@@ -58,7 +59,7 @@ export async function extractThumbnail(
       "-vf", "scale=480:-2",
       thumbPath,
     ],
-    { timeout: 30000 },
+    { timeout: 30000, env: toolEnv() },
   );
 }
 
