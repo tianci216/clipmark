@@ -95,6 +95,8 @@ export function SettingsPane({
 
         <DownloadsBlock settings={settings} onSaved={onSaved} />
 
+        <MusicBlock settings={settings} onSaved={onSaved} />
+
         <div className="cm-settings__block">
           <div className="cm-eyebrow">On your phone</div>
           {settings.tailscaleIp ? (
@@ -111,6 +113,88 @@ export function SettingsPane({
         </div>
       </div>
     </section>
+  );
+}
+
+/** The Music tab's Mixxx database and Music Folder, saved together with a track-count readback. */
+function MusicBlock({
+  settings,
+  onSaved,
+}: {
+  settings: Settings;
+  onSaved: (saved: SavedSettings) => void;
+}) {
+  const [db, setDb] = useState(settings.mixxxDbPath);
+  const [base, setBase] = useState(settings.musicBase);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [readback, setReadback] = useState<SavedSettings | null>(null);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const saved = await saveSettings({ mixxxDbPath: db, musicBase: base });
+      setReadback(saved);
+      setDb(saved.mixxxDbPath);
+      setBase(saved.musicBase);
+      onSaved(saved);
+    } catch (err) {
+      setReadback(null);
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="cm-settings__block" onSubmit={submit}>
+      <div className="cm-eyebrow">Music (Mixxx)</div>
+      <label className="cm-settings__label" htmlFor="cm-mixxx-db">
+        Mixxx database
+      </label>
+      <div className="cm-settings__field">
+        <input
+          id="cm-mixxx-db"
+          type="text"
+          value={db}
+          onChange={(e) => setDb(e.target.value)}
+          placeholder="…/Mixxx/mixxxdb.sqlite"
+          spellCheck={false}
+          autoCapitalize="off"
+          autoCorrect="off"
+        />
+      </div>
+      <label className="cm-settings__label" htmlFor="cm-music-base">
+        Music Folder
+      </label>
+      <div className="cm-settings__field">
+        <input
+          id="cm-music-base"
+          type="text"
+          value={base}
+          onChange={(e) => setBase(e.target.value)}
+          placeholder="/Users/you/Music"
+          spellCheck={false}
+          autoCapitalize="off"
+          autoCorrect="off"
+        />
+        <button className="cm-save" type="submit" disabled={busy || db.trim() === "" || base.trim() === ""}>
+          {busy ? "Checking…" : "Save"}
+        </button>
+      </div>
+      {error && <div className="cm-error">{error}</div>}
+      {readback && (
+        <p className="cm-settings__readback cm-mono">
+          Saved · {readback.trackCount ?? 0} track{readback.trackCount === 1 ? "" : "s"} in the Mixxx library
+        </p>
+      )}
+      <p className="cm-settings__hint">
+        The Music tab reads Mixxx's library read-only and never writes to it. Tracks play only from
+        files under the Music Folder.
+      </p>
+    </form>
   );
 }
 

@@ -79,6 +79,10 @@ export const COOKIE_BROWSERS: readonly CookiesFromBrowser[] = ["none", "chrome",
 /** GET /api/settings — the server-owned Library Folder (ADR-0005), cookies, yt-dlp status, addresses. */
 export interface Settings {
   libraryFolder: string | null;
+  /** The Mixxx database the Music tab reads (read-only). */
+  mixxxDbPath: string;
+  /** Audio is only served from under this folder. */
+  musicBase: string;
   tailscaleIp: string | null;
   lanIp: string | null;
   port: number;
@@ -90,11 +94,15 @@ export interface Settings {
 export interface SettingsPatch {
   libraryFolder?: string;
   cookiesFromBrowser?: CookiesFromBrowser;
+  mixxxDbPath?: string;
+  musicBase?: string;
 }
 
 /** PUT /api/settings response: the saved settings plus how many video files the folder holds. */
 export interface SavedSettings extends Settings {
   videoCount: number;
+  /** Tracks in the Mixxx library, when the music paths were saved (null if unreadable). */
+  trackCount?: number | null;
 }
 
 export async function fetchSettings(): Promise<Settings> {

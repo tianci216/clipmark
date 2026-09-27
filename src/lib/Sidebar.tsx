@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import type { Clip, Video } from "./api";
 import { Actions } from "./Actions";
 import type { DownloadControls } from "./downloadControls";
@@ -24,6 +24,7 @@ export function Sidebar({
   onOpen,
   onSettings,
   downloads,
+  tabs,
 }: {
   tree: LibraryTree;
   tagIndex: TagEntry[];
@@ -34,6 +35,8 @@ export function Sidebar({
   onOpen: (video: Video, clip: Clip | null) => void;
   onSettings: () => void;
   downloads: DownloadControls;
+  /** The Clips / Music switch, beside the brand. */
+  tabs: ReactNode;
 }) {
   const treeRef = useRef<HTMLElement>(null);
   const selectedFile = target?.video.file;
@@ -46,9 +49,12 @@ export function Sidebar({
   return (
     <aside className="cm-side">
       <div className="cm-side__top">
-        <button className="cm-brand" type="button" onClick={onHome} title="Library">
-          Clipmark<span>.</span>
-        </button>
+        <div className="cm-side__brandrow">
+          <button className="cm-brand" type="button" onClick={onHome} title="Library">
+            Clipmark<span>.</span>
+          </button>
+          {tabs}
+        </div>
         <TagFilter index={tagIndex} tokens={tokens} onTokens={onTokens} compact />
       </div>
       <nav className="cm-tree" ref={treeRef}>

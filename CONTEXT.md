@@ -35,3 +35,11 @@ _Avoid_: Video dir, root, source folder
 **Download**:
 An in-flight fetch of an online video into the Library Folder. It becomes a Video once the file has landed. Runs one at a time, in order; not persisted (ADR-0006).
 _Avoid_: Job, fetch, import
+
+**Track**:
+A song in the Mixxx DJ library, shown in the Music tab. Read-only: ClipMark never writes to Mixxx's database (ADR-0007).
+_Avoid_: Song, file
+
+**Music Folder**:
+The directory Tracks may be played from; a Track whose file lies outside it is refused.
+_Avoid_: Music base, music dir

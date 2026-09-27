@@ -25,6 +25,22 @@ import {
   type NetworkInterfaces,
 } from "./settings.js";
 import type { Clip, ClipInput, Store } from "./store.js";
+import {
+  audioMime,
+  countTracks,
+  getMusicConfig,
+  intParam,
+  listCrates,
+  listPlaylists,
+  listTracks,
+  openMixxx,
+  setMusicConfig,
+  trackLocation,
+  validateMixxxDb,
+  validateMusicBase,
+  type PathValidation,
+} from "./music.js";
+import { QuerySqlError } from "./musicQuery.js";
 import { mimeForFile, parseRange, resolveVideoPath } from "./videoStream.js";
 import { createYtDlpDownloader } from "./ytdlp.js";
 
@@ -44,9 +60,15 @@ function asyncHandler(
   };
 }
 
-function streamRange(abs: string, size: number, req: Request, res: Response): void {
+function streamRange(
+  abs: string,
+  size: number,
+  req: Request,
+  res: Response,
+  contentType: string = mimeForFile(abs),
+): void {
   res.setHeader("Accept-Ranges", "bytes");
-  res.setHeader("Content-Type", mimeForFile(abs));
+  res.setHeader("Content-Type", contentType);
   const range = parseRange(req.headers.range, size);
   if (range.kind === "unsatisfiable") {
     res.setHeader("Content-Range", `bytes */${size}`);
@@ -72,7 +94,7 @@ export interface AppOptions {
   scanDeps?: ScanDeps;
   /** OS network interfaces for the address readback; tests inject fixtures. */
   networkInterfaces?: NetworkInterfaces;
-  /** Environment used for the one-time CLIPMARK_VIDEO_DIR seed. */
+  /** Environment used for the one-time CLIPMARK_VIDEO_DIR seed and the Music tab's MIXXX_DB_PATH / MUSIC_BASE fallbacks. */
   env?: Record<string, string | undefined>;
   /** Port reported in /api/settings (the one the server listens on). */
   port?: number;
@@ -94,8 +116,11 @@ export function createApp({
   const libraryFolder = () => getLibraryFolder(store);
   const downloads = new DownloadQueue(downloader);
 
+  const musicConfig = () => getMusicConfig(store, env);
+
   const settingsResponse = async () => ({
     libraryFolder: libraryFolder(),
+    ...musicConfig(),
     ...deriveAddresses(networkInterfaces),
     port,
     cookiesFromBrowser: getCookiesFromBrowser(store),
@@ -124,8 +149,18 @@ export function createApp({
   app.put(
     "/api/settings",
     asyncHandler(async (req, res) => {
-      const body = (req.body ?? {}) as { libraryFolder?: unknown; cookiesFromBrowser?: unknown };
-      if (body.libraryFolder === undefined && body.cookiesFromBrowser === undefined) {
+      const body = (req.body ?? {}) as {
+        libraryFolder?: unknown;
+        cookiesFromBrowser?: unknown;
+        mixxxDbPath?: unknown;
+        musicBase?: unknown;
+      };
+      if (
+        body.libraryFolder === undefined &&
+        body.cookiesFromBrowser === undefined &&
+        body.mixxxDbPath === undefined &&
+        body.musicBase === undefined
+      ) {
         res.status(400).json({ error: "Nothing to save." });
         return;
       }
@@ -134,16 +169,135 @@ export function createApp({
         res.status(400).json({ error: folderResult.error });
         return;
       }
+      const dbResult = body.mixxxDbPath === undefined ? null : validateMixxxDb(body.mixxxDbPath);
+      const baseResult = body.musicBase === undefined ? null : validateMusicBase(body.musicBase);
+      for (const r of [dbResult, baseResult] as (PathValidation | null)[]) {
+        if (r && !r.ok) {
+          res.status(400).json({ error: r.error });
+          return;
+        }
+      }
       if (body.cookiesFromBrowser !== undefined && !isCookiesFromBrowser(body.cookiesFromBrowser)) {
         res.status(400).json({ error: "Cookies from browser must be none, chrome, safari or firefox." });
         return;
       }
       if (folderResult?.ok) setLibraryFolder(store, folderResult.folder);
       if (isCookiesFromBrowser(body.cookiesFromBrowser)) setCookiesFromBrowser(store, body.cookiesFromBrowser);
+      setMusicConfig(store, {
+        mixxxDbPath: dbResult?.ok ? dbResult.path : undefined,
+        musicBase: baseResult?.ok ? baseResult.path : undefined,
+      });
       const folder = libraryFolder();
       res.json({
         ...(await settingsResponse()),
         videoCount: folder === null ? 0 : listVideoFiles(folder).length,
+        ...(dbResult || baseResult ? { trackCount: musicTrackCount() } : {}),
+      });
+    }),
+  );
+
+  // ---------- Music tab: the Mixxx library, read-only ----------
+
+  /**
+   * Runs `fn` against a fresh read-only connection; 503 when the Mixxx library can't be opened.
+   * An async open comes first because opening a file in Mixxx's sandbox container waits on
+   * macOS's "access data from other apps" prompt (a stat does not): that wait must park a
+   * libuv worker, not the event loop (better-sqlite3 opens synchronously), or every request
+   * stalls with it.
+   */
+  const withMixxx = async (res: Response, fn: (db: ReturnType<typeof openMixxx>) => void): Promise<void> => {
+    const { mixxxDbPath } = musicConfig();
+    let db: ReturnType<typeof openMixxx>;
+    try {
+      await (await fs.promises.open(mixxxDbPath, "r")).close();
+      db = openMixxx(mixxxDbPath);
+    } catch (err) {
+      res.status(503).json({
+        error: `Couldn't open the Mixxx library at ${mixxxDbPath}: ${(err as Error).message}`,
+      });
+      return;
+    }
+    try {
+      fn(db);
+    } finally {
+      db.close();
+    }
+  };
+
+  const musicTrackCount = (): number | null => {
+    try {
+      const db = openMixxx(musicConfig().mixxxDbPath);
+      try {
+        return countTracks(db);
+      } finally {
+        db.close();
+      }
+    } catch {
+      return null;
+    }
+  };
+
+  app.get(
+    "/api/music/crates",
+    asyncHandler((_req, res) => withMixxx(res, (db) => res.json(listCrates(db)))),
+  );
+
+  app.get(
+    "/api/music/playlists",
+    asyncHandler((_req, res) => withMixxx(res, (db) => res.json(listPlaylists(db)))),
+  );
+
+  app.get(
+    "/api/music/tracks",
+    asyncHandler(async (req, res) => {
+      const q = req.query;
+      await withMixxx(res, (db) => {
+        try {
+          res.json(
+            listTracks(db, {
+              crate: intParam(q.crate),
+              playlist: intParam(q.playlist),
+              q: typeof q.q === "string" ? q.q : undefined,
+              sort: typeof q.sort === "string" ? q.sort : undefined,
+              order: typeof q.order === "string" ? q.order : undefined,
+            }),
+          );
+        } catch (err) {
+          if (!(err instanceof QuerySqlError)) throw err;
+          res.status(400).json({ error: err.message });
+        }
+      });
+    }),
+  );
+
+  app.get(
+    "/api/music/audio/:id",
+    asyncHandler(async (req, res) => {
+      const id = intParam(req.params.id);
+      if (id === undefined) {
+        res.status(404).send("Track not found");
+        return;
+      }
+      await withMixxx(res, (db) => {
+        const row = trackLocation(db, id);
+        if (!row) {
+          res.status(404).send("Track not found");
+          return;
+        }
+        if (!isUnderFolder(musicConfig().musicBase, row.location)) {
+          res.status(403).send("Forbidden");
+          return;
+        }
+        let size: number;
+        try {
+          const stat = fs.statSync(row.location);
+          if (!stat.isFile()) throw new Error("not a file");
+          size = stat.size;
+        } catch {
+          res.status(404).send("File not found");
+          return;
+        }
+        streamRange(row.location, size, req, res, audioMime(row.filetype));
       });
     }),
   );

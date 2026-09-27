@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MutableRefObject } from "react";
+import { useEffect, useRef, type MutableRefObject, type ReactNode } from "react";
 import type { Clip, Video } from "./api";
 import { Actions } from "./Actions";
 import { DownloadRow } from "./DownloadRow";
@@ -22,6 +22,8 @@ export function PhoneLibrary({
   onOpen,
   onSettings,
   downloads,
+  tabs,
+  footer,
 }: {
   tree: LibraryTree;
   tagIndex: TagEntry[];
@@ -35,6 +37,10 @@ export function PhoneLibrary({
   onOpen: (video: Video, clip: Clip | null) => void;
   onSettings: () => void;
   downloads: DownloadControls;
+  /** The Clips / Music switch, in place of the brand on the folder list. */
+  tabs: ReactNode;
+  /** Below the list (the music player bar while a track is loaded). */
+  footer?: ReactNode;
 }) {
   const el = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -63,9 +69,7 @@ export function PhoneLibrary({
             ‹ Library
           </button>
         ) : (
-          <div className="cm-brand">
-            Clipmark<span>.</span>
-          </div>
+          tabs
         )}
         <Actions downloads={downloads} onSettings={onSettings} />
       </header>
@@ -160,6 +164,7 @@ export function PhoneLibrary({
           </>
         )}
       </div>
+      {footer}
     </main>
   );
 }

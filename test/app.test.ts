@@ -6,6 +6,7 @@ import type { Server } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 import { createApp, type AppOptions } from "../server/src/app";
+import { defaultMixxxDbPath, defaultMusicBase } from "../server/src/music";
 import { computeFileHash, type ScanDeps } from "../server/src/scanner";
 import { Store } from "../server/src/store";
 
@@ -103,6 +104,8 @@ describe("GET /api/settings", () => {
     expect(status).toBe(200);
     expect(body).toEqual({
       libraryFolder: null,
+      mixxxDbPath: defaultMixxxDbPath(),
+      musicBase: defaultMusicBase(),
       tailscaleIp: "100.101.102.103",
       lanIp: "192.168.1.23",
       port: 8899,
