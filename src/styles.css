@@ -125,9 +125,6 @@ input, select, textarea { font: inherit; color: inherit; }
   background: var(--cm-surface); border: 1px solid var(--cm-line); border-radius: 10px;
   padding: 12px; display: flex; flex-direction: column; gap: 10px;
 }
-.cm-watch__side .cm-deck__marks { flex-wrap: wrap; row-gap: 8px; }
-.cm-watch__side .cm-mark { min-width: 88px; }
-.cm-watch__side .cm-deck__fields .cm-save { height: 38px; }
 .cm-sec__head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
 /* this video's Clips: a compact list; clicking the times or the name Loops it */
 .cm-clist { display: flex; flex-direction: column; }
@@ -179,7 +176,7 @@ input, select, textarea { font: inherit; color: inherit; }
 @media (max-width: 860px) {
   .cm-watch__grid { padding: 12px 14px 70px; gap: 18px; }
   .cm-next { grid-template-columns: 140px minmax(0, 1fr); }
-  .cm-deck__fields input, .cm-pills__in { font-size: 16px; } /* 16px stops iOS zooming on focus */
+  .cm-tmark input, .cm-editor__note, .cm-pills__in { font-size: 16px; } /* 16px stops iOS zooming on focus */
 }
 
 /* ---------- strip (proportional clip track) ---------- */
@@ -346,25 +343,54 @@ input, select, textarea { font: inherit; color: inherit; }
 .cm-frame__missing span { font-family: var(--cm-display); font-size: 28px; letter-spacing: 0; text-transform: none; }
 
 /* ---------- mark deck ---------- */
-.cm-deck { display: flex; flex-direction: column; gap: 10px; }
-.cm-deck__fields { display: grid; grid-template-columns: 1fr; gap: 8px; }
-.cm-deck__marks { display: flex; align-items: center; gap: 10px; }
-.cm-mark {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
-  min-width: 96px; padding: 8px 12px; border: 1px solid var(--cm-line); border-radius: 2px;
-  font-family: var(--cm-mono); font-size: 18px; background: var(--cm-surface);
-}
-.cm-mark:hover { border-color: var(--cm-accent); }
-.cm-mark small { font-size: 9px; letter-spacing: 0.16em; color: var(--cm-muted); }
-.cm-mark.is-set { border-color: var(--cm-accent); color: var(--cm-accent); }
+.cm-editor { gap: 10px; transition: border-color 0.2s, box-shadow 0.2s; }
+.cm-editor.is-editing { border-color: var(--cm-accent); box-shadow: 0 0 0 3px var(--cm-accent-soft); }
+.cm-editor__head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.cm-editor.is-editing .cm-eyebrow { color: var(--cm-accent); }
+.cm-editor .cm-eyebrow b { font-weight: 500; }
 .cm-deck__arrow { color: var(--cm-muted); }
-.cm-deck__live { margin-left: auto; font-size: 11px; color: var(--cm-muted); }
-.cm-deck__fields > input {
+.cm-deck__live { font-size: 11px; color: var(--cm-muted); }
+/* IN -> OUT: two cards, each a Mark button over a typable MM:SS field */
+.cm-tmarks { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; align-items: center; }
+.cm-tmark {
+  display: flex; flex-direction: column; gap: 2px; padding: 6px 8px 7px 10px; min-width: 0;
+  border: 1px solid var(--cm-line); border-radius: 2px; background: var(--cm-surface);
+}
+.cm-tmark:focus-within, .cm-tmark.is-set { border-color: var(--cm-accent); }
+.cm-tmark__top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.cm-tmark small { font-family: var(--cm-mono); font-size: 9px; letter-spacing: 0.16em; color: var(--cm-muted); }
+.cm-tmark__set {
+  font-family: var(--cm-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--cm-accent); padding: 3px 7px; border-radius: 2px; border: 1px solid var(--cm-accent-soft);
+}
+.cm-tmark__set:hover { background: var(--cm-accent); color: var(--cm-bg); border-color: var(--cm-accent); }
+.cm-tmark input {
+  width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; padding: 0;
+  font-family: var(--cm-mono); font-size: 18px; color: var(--cm-ink);
+}
+.cm-tmark input::placeholder { color: var(--cm-muted); }
+/* an entry that is not MM:SS */
+.cm-tmark.is-bad { border-color: var(--cm-accent); border-style: dashed; }
+.cm-tmark.is-bad input { color: var(--cm-accent); text-decoration: underline wavy var(--cm-accent); text-underline-offset: 3px; }
+.cm-editor__fields { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.cm-editor__note {
   border: 1px solid var(--cm-line); border-radius: 2px; padding: 9px 12px; font-size: 13px;
   background: var(--cm-surface); outline: none; min-width: 0;
 }
-.cm-deck__fields > input:focus { border-color: var(--cm-accent); }
-.cm-deck__fields > input::placeholder { color: var(--cm-muted); }
+.cm-editor__note:focus { border-color: var(--cm-accent); }
+.cm-editor__note::placeholder { color: var(--cm-muted); }
+.cm-editor__new { width: 100%; height: 38px; }
+.cm-editor__act { display: flex; align-items: center; gap: 12px; }
+.cm-editor__rm, .cm-editor__cancel { font-size: 12px; color: var(--cm-muted); }
+.cm-editor__rm:hover, .cm-editor__cancel:hover { color: var(--cm-accent); }
+.cm-editor__cancel { margin-left: auto; }
+.cm-editor__cancel .cm-mono { opacity: 0.7; font-size: 10px; letter-spacing: 0.06em; }
+.cm-editor__act .cm-save { height: 34px; }
+.cm-crow.is-editing { border-left-color: var(--cm-accent); background: var(--cm-accent-soft); }
+.cm-crow__editing {
+  font-family: var(--cm-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--cm-accent); white-space: nowrap;
+}
 .cm-save {
   background: var(--cm-ink); color: var(--cm-bg); padding: 9px 16px; border-radius: 2px;
   font-weight: 500; font-size: 13px;
@@ -556,8 +582,6 @@ input, select, textarea { font: inherit; color: inherit; }
   .cm-main__scroll { padding: 14px 14px 70px; gap: 14px; }
   .cm-settings__field { flex-direction: column; }
   .cm-settings__addr-label { width: auto; }
-  .cm-deck__marks { flex-wrap: wrap; }
-  .cm-deck__live { width: 100%; margin-left: 0; }
 
   .mx-scroll { --mx-chips-h: 46px; }
   .mx-page { padding: 0 0 70px; }

@@ -9,6 +9,7 @@ import {
   removeDownload,
   saveSettings,
   startDownload,
+  updateClip,
   type Clip,
   type ClipInput,
   type Download,
@@ -304,6 +305,21 @@ export function App() {
     );
   }, []);
 
+  const handleUpdate = useCallback(
+    async (clip: Clip, input: ClipInput): Promise<Clip> => {
+      const updated = await updateClip(clip.id, input);
+      setClips((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      const starts = clips
+        .filter((c) => c.videoHash === updated.videoHash)
+        .map((c) => (c.id === updated.id ? updated.startSeconds : c.startSeconds));
+      setVideos((prev) =>
+        prev.map((v) => (v.hash === updated.videoHash ? { ...v, firstClipStart: Math.min(...starts) } : v)),
+      );
+      return updated;
+    },
+    [clips],
+  );
+
   const handleRemove = useCallback(
     async (clip: Clip): Promise<void> => {
       await deleteClip(clip.id);
@@ -350,6 +366,7 @@ export function App() {
         videos={videos}
         clips={clips}
         onSave={handleSave}
+        onUpdate={handleUpdate}
         onRemove={handleRemove}
         onOpen={open}
         active={!clipsHidden}

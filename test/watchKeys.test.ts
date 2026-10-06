@@ -10,6 +10,7 @@ const base: WatchKeyInput = {
   active: true,
   fullscreen: false,
   looping: false,
+  editing: false,
 };
 const press = (over: Partial<WatchKeyInput>) => watchKeyAction({ ...base, ...over });
 
@@ -51,5 +52,22 @@ describe("watch page keys", () => {
   it("other keys are ignored", () => {
     expect(press({ key: "g" })).toBeNull();
     expect(press({ key: " " , looping: true })).toBeNull();
+  });
+});
+
+describe("Escape with the clip editor", () => {
+  it("cancels an open edit first, even while a Loop runs or focus is in a field", () => {
+    expect(press({ key: "Escape", editing: true })).toBe("cancel-edit");
+    expect(press({ key: "Escape", editing: true, looping: true })).toBe("cancel-edit");
+    expect(press({ key: "Escape", editing: true, typing: true })).toBe("cancel-edit");
+  });
+
+  it("only otherwise stops the Loop", () => {
+    expect(press({ key: "Escape", editing: false, looping: true })).toBe("stop-loop");
+  });
+
+  it("leaves Escape to the browser in fullscreen or while the page is hidden", () => {
+    expect(press({ key: "Escape", editing: true, fullscreen: true })).toBeNull();
+    expect(press({ key: "Escape", editing: true, active: false })).toBeNull();
   });
 });
