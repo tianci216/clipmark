@@ -9,12 +9,16 @@ A video file in the library, identified by a content hash of the file so it can 
 _Avoid_: File, clip source
 
 **Clip**:
-A saved time range on a video, with tags and an optional note. The core unit the user creates.
+A saved time range on a video, with Dancers, Tags and an optional Note. The core unit the user creates; every part of it can be changed after saving.
 _Avoid_: Annotation, marker, bookmark
 
 **Tag**:
-A searchable label attached to a clip (e.g. a dancer's name, a move).
-_Avoid_: Label, keyword, category
+A searchable lowercase label on a Clip describing the dancing, such as a move or a style. Never a person's name — that is a Dancer.
+_Avoid_: Label, keyword, category, name
+
+**Dancer**:
+A person named on a Clip. Kept apart from Tags so names keep their capitalisation and Tags describe the dancing.
+_Avoid_: Name tag, person, performer
 
 **Note**:
 Free-form text attached to a clip.
@@ -28,13 +32,21 @@ _Avoid_: ID, checksum
 The act of setting a clip's start (IN) or end (OUT) time at the current playback position.
 _Avoid_: Set, flag
 
+**Loop**:
+Repeating playback of one Clip's range until the user stops it or seeks away.
+_Avoid_: Repeat, cycle
+
 **Library Folder**:
 The single directory the app scans for Videos. A Video is part of the library only while its file is under this folder; Clips on Videos outside it are kept but hidden.
 _Avoid_: Video dir, root, source folder
 
 **Download**:
-An in-flight fetch of an online video into the Library Folder. It becomes a Video once the file has landed. Runs one at a time, in order; not persisted (ADR-0006).
+An in-flight fetch of an online video into the Library Folder. It becomes a Video with a Source once the file has landed. Runs one at a time, in order; not persisted (ADR-0006).
 _Avoid_: Job, fetch, import
+
+**Source**:
+Where a Video was downloaded from: its page URL, title, description, channel, upload date and preview image. Only Videos that arrived as a Download have one.
+_Avoid_: Metadata, origin, YouTube info
 
 **Track**:
 A song in the Mixxx DJ library, shown in the Music tab. Read-only: ClipMark never writes to Mixxx's database (ADR-0007).

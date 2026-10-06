@@ -15,3 +15,7 @@ Migration from YAML is mechanical: `MM:SS` → seconds, insert video → clips �
 A `CHECK (end_seconds > start_seconds)` enforces valid time ranges at the schema level; the API rejects `end <= start` with a friendly message. Clips are create/delete only — no in-place editing (delete + re-create), preserving the original model.
 
 **Amended by ADR-0005:** `videos.file` is now an absolute path (migrated once on first run), and a fourth table `settings(key TEXT PK, value TEXT)` holds the server-owned Library Folder.
+
+**Amended by ADR-0008:** Clips are now editable in place (times, Dancers, Tags, Note); "create/delete only" no longer holds. Dancers live in their own `clip_dancers` table beside `clip_tags`, and `clip_tags.tag` is stored lowercase.
+
+**Amended by ADR-0009:** a `video_sources` table keyed by `videos.hash` holds a downloaded Video's Source.
