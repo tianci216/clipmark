@@ -1,0 +1,12 @@
+/* ============ macOS shell (app/ClipMark.swift) ============
+   The shell draws the window with a transparent title bar over full-size web content and
+   marks the page with <html data-shell="macos"> before any script runs. Only then does the
+   page reserve a slim top row for the traffic lights; nothing else is drawn in that row.
+   In a plain browser --cm-shell-titlebar stays 0 and nothing here applies. */
+
+:root { --cm-shell-titlebar: 0px; }
+:root[data-shell="macos"] { --cm-shell-titlebar: 28px; }
+
+:root[data-shell="macos"] body { padding-top: var(--cm-shell-titlebar); }
+:root[data-shell="macos"] #root { height: calc(100% - var(--cm-shell-titlebar)); }
+:root[data-shell="macos"] .cm-app { height: calc(100dvh - var(--cm-shell-titlebar)); }
