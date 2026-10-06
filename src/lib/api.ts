@@ -8,6 +8,22 @@ export interface Video {
   thumbnail: string | null;
   clipCount: number;
   firstClipStart: number | null;
+  /** Where a downloaded Video came from (ADR-0009); null for local files. */
+  source: Source | null;
+}
+
+/** A downloaded Video's Source, saved by Hash when the Download lands. */
+export interface Source {
+  /** The page the Video was downloaded from. */
+  url: string;
+  title: string;
+  description: string;
+  channel: string | null;
+  /** ISO date, YYYY-MM-DD. */
+  uploadDate: string | null;
+  siteId: string;
+  /** Local URL of the preview image (already the Video's thumbnail), or null. */
+  preview: string | null;
 }
 
 export interface Clip {

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { TOOL_CANDIDATE_DIRS, toolEnv } from "./toolEnv.js";
 import type { Downloader, DownloadEvents, DownloadRequest, YtDlpStatus } from "./downloads.js";
+import { SOURCE_PRINT_FIELDS } from "./source.js";
 
 /**
  * The production `Downloader`: wraps the yt-dlp process. Resolved from the same
@@ -49,6 +50,12 @@ export function buildArgs(request: DownloadRequest): string[] {
     "--no-simulate",
     "--print", `before_dl:${TITLE_TAG}%(title)s`,
     "--print", `after_move:${FILE_TAG}%(filepath)s`,
+    // The Source (ADR-0009) as one JSON line; yt-dlp escapes newlines inside it.
+    "--print", `after_move:${SOURCE_TAG}%(.{${SOURCE_PRINT_FIELDS}})j`,
+    // The preview image goes to the app's thumbnail store, never the Library Folder.
+    "--write-thumbnail",
+    "--convert-thumbnails", "jpg",
+    "-o", `thumbnail:${request.previewBase}.%(ext)s`,
     "-f", FORMAT,
     "--merge-output-format", "mp4",
     "--recode-video", "mp4",
@@ -63,13 +70,18 @@ const PROGRESS_RE = /^\[download\]\s+([\d.]+)%/;
 /** Tags on the `--print` lines so a title that itself starts with "[" cannot be mistaken for anything else. */
 const TITLE_TAG = "clipmark-title:";
 const FILE_TAG = "clipmark-file:";
+const SOURCE_TAG = "clipmark-source:";
 
-/** Feeds yt-dlp's stdout lines to the events: progress %, the title, and the final path. */
+/** Feeds yt-dlp's stdout lines to the events: progress %, the title, the final path and the Source. */
 export function parseStdoutLine(
   line: string,
   events: Pick<DownloadEvents, "onProgress" | "onTitle">,
-  state: { filepath: string | null },
+  state: { filepath: string | null; source: string | null },
 ): void {
+  if (line.startsWith(SOURCE_TAG)) {
+    state.source = line.slice(SOURCE_TAG.length).trim();
+    return;
+  }
   if (line.startsWith(TITLE_TAG)) {
     events.onTitle(line.slice(TITLE_TAG.length).trim());
     return;
@@ -89,12 +101,17 @@ export function createYtDlpDownloader(initialBinary: string | null = findYtDlp()
     start(request, events) {
       if (!binary) {
         queueMicrotask(() =>
-          events.onExit({ code: null, filepath: null, stderrTail: "yt-dlp not found — brew install yt-dlp" }),
+          events.onExit({
+            code: null,
+            filepath: null,
+            stderrTail: "yt-dlp not found — brew install yt-dlp",
+            source: null,
+          }),
         );
         return { cancel() {} };
       }
       const child = spawn(binary, buildArgs(request), { stdio: ["ignore", "pipe", "pipe"], env: ytDlpEnv() });
-      const state = { filepath: null as string | null };
+      const state = { filepath: null as string | null, source: null as string | null };
       let stderr = "";
       let stdoutBuf = "";
       child.stdout.setEncoding("utf8");
@@ -109,11 +126,11 @@ export function createYtDlpDownloader(initialBinary: string | null = findYtDlp()
         stderr = (stderr + chunk).slice(-8192);
       });
       child.on("error", (err) => {
-        events.onExit({ code: null, filepath: null, stderrTail: err.message });
+        events.onExit({ code: null, filepath: null, stderrTail: err.message, source: null });
       });
       child.on("close", (code) => {
         if (stdoutBuf) parseStdoutLine(stdoutBuf, events, state);
-        events.onExit({ code, filepath: state.filepath, stderrTail: tail(stderr) });
+        events.onExit({ code, filepath: state.filepath, stderrTail: tail(stderr), source: state.source });
       });
       return {
         cancel() {

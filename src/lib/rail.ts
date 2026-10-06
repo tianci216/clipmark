@@ -20,6 +20,7 @@ export function orphanVideoFor(clip: Clip): Video {
     thumbnail: null,
     clipCount: 0,
     firstClipStart: null,
+    source: null,
   };
 }
 

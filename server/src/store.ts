@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import type { Source } from "./source.js";
 
 export interface Clip {
   id: number;
@@ -72,6 +73,19 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL
 );
 
+-- A downloaded Video's Source (ADR-0009). Keyed by Hash, no foreign key: the
+-- Download queue writes it as the file lands, before the scan adds the videos row.
+CREATE TABLE IF NOT EXISTS video_sources (
+  hash TEXT PRIMARY KEY,
+  url TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  channel TEXT,
+  upload_date TEXT,
+  site_id TEXT NOT NULL,
+  preview TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_clips_video_hash ON clips(video_hash);
 CREATE INDEX IF NOT EXISTS idx_clip_tags_tag ON clip_tags(tag);
 `;
@@ -93,6 +107,17 @@ interface VideoRow {
   thumbnail: string | null;
   clip_count: number;
   first_clip_start: number | null;
+}
+
+interface SourceRow {
+  hash: string;
+  url: string;
+  title: string;
+  description: string;
+  channel: string | null;
+  upload_date: string | null;
+  site_id: string;
+  preview: string | null;
 }
 
 export class Store {
@@ -281,6 +306,47 @@ export class Store {
       )
       .all() as VideoRow[];
     return rows.map(toVideo);
+  }
+
+  /** Saves the Source for a Hash, replacing any existing one. */
+  setSource(hash: string, source: Source): void {
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO video_sources
+           (hash, url, title, description, channel, upload_date, site_id, preview)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        hash,
+        source.url,
+        source.title,
+        source.description,
+        source.channel,
+        source.uploadDate,
+        source.siteId,
+        source.preview,
+      );
+  }
+
+  /** Every saved Source by Hash. */
+  getSources(): Map<string, Source> {
+    const rows = this.db
+      .prepare("SELECT hash, url, title, description, channel, upload_date, site_id, preview FROM video_sources")
+      .all() as SourceRow[];
+    return new Map(
+      rows.map((r) => [
+        r.hash,
+        {
+          url: r.url,
+          title: r.title,
+          description: r.description,
+          channel: r.channel,
+          uploadDate: r.upload_date,
+          siteId: r.site_id,
+          preview: r.preview,
+        },
+      ]),
+    );
   }
 
   getTags(): string[] {

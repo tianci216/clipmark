@@ -120,7 +120,12 @@ export function createApp({
   seedLibraryFolder(store, env);
   // Read per request (ADR-0005) so a PUT applies to the next scan and stream.
   const libraryFolder = () => getLibraryFolder(store);
-  const downloads = new DownloadQueue(downloader);
+  const downloads = new DownloadQueue({
+    downloader,
+    thumbnailDir,
+    hash: scanDeps.hash,
+    saveSource: (hash, source) => store.setSource(hash, source),
+  });
 
   const musicConfig = () => getMusicConfig(store, env);
 
@@ -392,16 +397,20 @@ export function createApp({
       }
       const scanned = await scanVideoDir(store, folder, thumbnailDir, scanDeps);
       const stats = new Map(store.getVideos().map((v) => [v.hash, v]));
+      const sources = store.getSources();
       const videos = scanned.map((s) => {
         const stat = stats.get(s.hash);
+        const source = sources.get(s.hash) ?? null;
         return {
           hash: s.hash,
           file: s.file,
           fileMtime: s.fileMtime,
           durationSeconds: s.durationSeconds,
-          thumbnail: s.thumbnail,
+          // The Source's local preview image replaces the mid-frame thumbnail (ADR-0009).
+          thumbnail: source?.preview ?? s.thumbnail,
           clipCount: stat?.clipCount ?? 0,
           firstClipStart: stat?.firstClipStart ?? null,
+          source,
         };
       });
       res.json({ videos, folders: listSubfolders(folder) });
