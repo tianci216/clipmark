@@ -217,19 +217,34 @@ describe("searchField", () => {
   const config = searchField(
     buildTermIndex([["Dax Hock", "Sarah Breck"], ["Dax Hock"]]),
     buildTermIndex([["swing out"], ["dax routine"]]),
+    [
+      { text: "Choreography/Swing", count: 4 },
+      { text: "Classes", count: 1 },
+    ],
   );
 
-  it("suggests Dancers and Tags together, labelled by kind", () => {
+  it("suggests Dancers, Tags and folders together, labelled by kind", () => {
     expect(suggest(config, "dax", [])).toEqual([
       { kind: "dancer", text: "Dax Hock", count: 2 },
       { kind: "tag", text: "dax routine", count: 1 },
     ]);
+    expect(suggest(config, "swing", [])).toEqual([
+      { kind: "folder", text: "Choreography/Swing", count: 4 },
+      { kind: "tag", text: "swing out", count: 1 },
+    ]);
     expect(config.kinds.dancer.label).toBe("dancer");
     expect(config.kinds.tag.label).toBe("tag");
+    expect(config.kinds.folder.label).toBe("folder");
   });
 
-  it("commits typed text as a Dancer when it is part of a known Dancer's name, else as a Tag", () => {
+  it("commits typed text as a Dancer when it is part of a known Dancer's name, else as a Tag, never a folder", () => {
     expect(commitDraft(config, [], "Breck")).toEqual([{ kind: "dancer", text: "Breck" }]);
     expect(commitDraft(config, [], "Swing")).toEqual([{ kind: "tag", text: "swing" }]);
+    expect(commitDraft(config, [], "Classes")).toEqual([{ kind: "tag", text: "classes" }]);
+  });
+
+  it("keeps a picked folder's spelling", () => {
+    const step = pillStep(config, { pills: [], draft: "class", open: true, hi: 0 }, { type: "key", key: "Enter" });
+    expect(step.state.pills).toEqual([{ kind: "folder", text: "Classes" }]);
   });
 });

@@ -48,16 +48,17 @@ describe("Source labels", () => {
 
 describe("cardMeta", () => {
   it("leads with the channel, and dates a Video with a Source", () => {
-    expect(cardMeta(video("ILHC/a.mp4", SOURCE))).toEqual({ place: "ILHC · ILHC", origin: "26 Aug 2024" });
+    expect(cardMeta(video("ILHC/a.mp4", SOURCE))).toEqual({ channel: "ILHC", folder: "ILHC", origin: "26 Aug 2024" });
   });
 
   it("marks a Video without a Source as a local file, in the top-level folder", () => {
-    expect(cardMeta(video("a.mp4", null))).toEqual({ place: "Library Folder", origin: "local file" });
+    expect(cardMeta(video("a.mp4", null))).toEqual({ channel: null, folder: "Library Folder", origin: "local file" });
   });
 
   it("drops what the Source does not give", () => {
     expect(cardMeta(video("A/a.mp4", { ...SOURCE, channel: null, uploadDate: null }))).toEqual({
-      place: "A",
+      channel: null,
+      folder: "A",
       origin: null,
     });
   });

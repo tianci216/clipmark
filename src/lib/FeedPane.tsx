@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { Clip, Video } from "./api";
 import type { DownloadControls } from "./downloadControls";
-import { cardMeta, type DownloadCard, type Feed, type SearchPill, type VideoCard } from "./feed";
+import {
+  cardMeta,
+  chipOn,
+  noMatchText,
+  toggleChip,
+  type DownloadCard,
+  type Feed,
+  type SearchChip,
+  type SearchPill,
+  type VideoCard,
+} from "./feed";
 import { clipLabel, displayName, folderLabel, formatTime } from "./format";
 import { stripDuration } from "./Strip";
 
@@ -17,17 +27,27 @@ const ERROR_LINES = 4;
 export function FeedPane({
   feed,
   pills,
+  chips,
+  onPills,
   downloads,
   scrollRef,
   onOpen,
 }: {
   feed: Feed;
   pills: SearchPill[];
+  /** The suggested Dancers and Tags for the chips row, after "All". */
+  chips: SearchChip[];
+  /** Changes the search: a chip, "All", or a card's folder name. */
+  onPills: (pills: SearchPill[]) => void;
   downloads: DownloadControls;
   /** Stores the feed's scroll position so it survives a trip to the watch page. */
   scrollRef: MutableRefObject<number>;
   onOpen: (video: Video, clip: Clip | null) => void;
 }) {
+  const addFolder = (folder: string) => {
+    const pill: SearchPill = { kind: "folder", text: folder };
+    if (!chipOn(pills, pill)) onPills([...pills, pill]);
+  };
   const el = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (el.current) el.current.scrollTop = scrollRef.current;
@@ -46,10 +66,37 @@ export function FeedPane({
         scrollRef.current = e.currentTarget.scrollTop;
       }}
     >
+      {chips.length > 0 && (
+        <nav className="cm-chips cm-feed__chips" aria-label="Suggested dancers and tags">
+          <button
+            type="button"
+            className={"cm-chip" + (pills.length === 0 ? " is-on" : "")}
+            aria-pressed={pills.length === 0}
+            onClick={() => onPills([])}
+          >
+            All
+          </button>
+          {chips.map((c) => {
+            const on = chipOn(pills, c);
+            return (
+              <button
+                key={c.kind + ":" + c.text}
+                type="button"
+                className={`cm-chip cm-chip--${c.kind}` + (on ? " is-on" : "")}
+                aria-pressed={on}
+                title={`${c.kind} · ${c.count} clip${c.count === 1 ? "" : "s"}`}
+                onClick={() => onPills(toggleChip(pills, c))}
+              >
+                {c.text}
+              </button>
+            );
+          })}
+        </nav>
+      )}
       {feed.empty ? (
         <div className="cm-feed__empty">
           {feed.empty === "filter"
-            ? `No clips match ${pills.map((p) => p.text).join(" + ")}.`
+            ? `${noMatchText(pills)}.`
             : "No videos in the library yet. Download one, or add files to the Library Folder."}
         </div>
       ) : (
@@ -63,6 +110,7 @@ export function FeedPane({
                 card={card}
                 filtering={feed.filtering}
                 onOpen={openFrom}
+                onFolder={addFolder}
               />
             ),
           )}
@@ -76,10 +124,12 @@ function VideoCardView({
   card,
   filtering,
   onOpen,
+  onFolder,
 }: {
   card: VideoCard;
   filtering: boolean;
   onOpen: (video: Video, clip: Clip | null) => void;
+  onFolder: (folder: string) => void;
 }) {
   const { video, clips, missing } = card;
   const d = stripDuration(video.durationSeconds, clips);
@@ -122,7 +172,17 @@ function VideoCardView({
         <button type="button" className="cm-card__title" onClick={() => onOpen(video, null)}>
           {name}
         </button>
-        <div className="cm-card__meta">{meta.place}</div>
+        <div className="cm-card__meta">
+          {meta.channel && `${meta.channel} · `}
+          <button
+            type="button"
+            className="cm-card__folder"
+            title={`Show clips in ${meta.folder}`}
+            onClick={() => onFolder(meta.folder)}
+          >
+            {meta.folder}
+          </button>
+        </div>
         <div className="cm-card__meta">
           {filtering ? (
             <>
