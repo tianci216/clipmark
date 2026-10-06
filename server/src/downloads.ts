@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { isUnderFolder, relativeToFolder, type CookiesFromBrowser } from "./settings.js";
+import { parseSourceJson, type Source } from "./source.js";
 
 /**
  * The Download queue: in-memory, sequential, not persisted. A Download is an
@@ -17,6 +18,11 @@ export interface DownloadRequest {
   outputTemplate: string;
   /** Browser to read cookies from, or null to omit the flag. */
   cookiesFromBrowser: Exclude<CookiesFromBrowser, "none"> | null;
+  /**
+   * Absolute path, without extension, where yt-dlp writes the preview image: inside the
+   * app's thumbnail store, never the Library Folder. The queue renames it by Hash on landing.
+   */
+  previewBase: string;
 }
 
 export interface DownloadExit {
@@ -24,6 +30,8 @@ export interface DownloadExit {
   /** Final path of the landed file (yt-dlp `after_move:filepath`), if it reported one. */
   filepath: string | null;
   stderrTail: string;
+  /** The Source as yt-dlp printed it (the JSON after the tag), or null when no line came. */
+  source: string | null;
 }
 
 export interface DownloadEvents {
@@ -136,12 +144,32 @@ export function isHttpUrl(input: unknown): input is string {
 
 export const OUTPUT_TEMPLATE = "%(title)s [%(id)s].%(ext)s";
 
+/** Name of the preview image yt-dlp writes for a running Download, before its Hash is known. */
+const PENDING_PREVIEW = "source-pending-";
+
+/** File name of a saved Source's preview image in the thumbnail store. */
+export function previewName(hash: string, ext: string): string {
+  return `source-${hash}${ext}`;
+}
+
+export interface DownloadQueueOptions {
+  downloader: Downloader;
+  /** The app's thumbnail store (served at /thumbnails). */
+  thumbnailDir: string;
+  /** The scanner's hash function, so the saved Source is keyed exactly as the scan keys the Video. */
+  hash(file: string): string;
+  saveSource(hash: string, source: Source): void;
+}
+
 export class DownloadQueue {
   private readonly entries: Entry[] = [];
   private nextId = 1;
   private running: Entry | null = null;
+  private readonly downloader: Downloader;
 
-  constructor(private readonly downloader: Downloader) {}
+  constructor(private readonly options: DownloadQueueOptions) {
+    this.downloader = options.downloader;
+  }
 
   list(): Download[] {
     return this.entries.map((e) => ({ ...e.download }));
@@ -173,6 +201,8 @@ export class DownloadQueue {
         url: input.url,
         outputTemplate: path.join(input.destination, OUTPUT_TEMPLATE),
         cookiesFromBrowser: input.cookiesFromBrowser === "none" ? null : input.cookiesFromBrowser,
+        // Unique per run so a stale image from an earlier Download is never picked up.
+        previewBase: path.join(this.options.thumbnailDir, `${PENDING_PREVIEW}${Date.now()}-${download.id}`),
       },
       handle: null,
       preexistingPartials: new Set(),
@@ -234,6 +264,7 @@ export class DownloadQueue {
       download.state = "done";
       download.progress = 100;
       download.file = relativeToFolder(entry.libraryFolder, result.filepath);
+      this.saveSource(entry, result.filepath, result.source);
     } else {
       download.state = "failed";
       download.error =
@@ -241,8 +272,54 @@ export class DownloadQueue {
         (result.code === 0 ? "yt-dlp finished without reporting a file." : `yt-dlp exited with code ${result.code}.`);
       this.cleanupPartials(entry);
     }
+    this.removePendingPreviews(entry);
     this.running = null;
     this.pump();
+  }
+
+  /**
+   * Keys the Source by the landed file's Hash (ADR-0009) so it exists before the next scan.
+   * A Source that can't be parsed, or a file that can't be hashed, never fails the Download.
+   */
+  private saveSource(entry: Entry, filepath: string, raw: string | null): void {
+    const parsed = parseSourceJson(raw);
+    if (!parsed.ok) {
+      console.error(`Download ${entry.download.url} landed without a Source: ${parsed.error}`);
+      return;
+    }
+    try {
+      const hash = this.options.hash(filepath);
+      const preview = this.claimPreview(entry, hash);
+      this.options.saveSource(hash, { ...parsed.source, preview });
+    } catch (err) {
+      console.error(`Could not save the Source for ${filepath}:`, err);
+    }
+  }
+
+  /** Renames the preview yt-dlp wrote to the Hash's name; its /thumbnails URL, or null. */
+  private claimPreview(entry: Entry, hash: string): string | null {
+    const found = this.pendingPreviews(entry).sort(
+      (a, b) => Number(!a.endsWith(".jpg")) - Number(!b.endsWith(".jpg")),
+    )[0];
+    if (!found) return null;
+    const name = previewName(hash, path.extname(found).toLowerCase());
+    fs.renameSync(path.join(this.options.thumbnailDir, found), path.join(this.options.thumbnailDir, name));
+    return `/thumbnails/${name}`;
+  }
+
+  private pendingPreviews(entry: Entry): string[] {
+    const prefix = path.basename(entry.request.previewBase) + ".";
+    try {
+      return fs.readdirSync(this.options.thumbnailDir).filter((n) => n.startsWith(prefix));
+    } catch {
+      return [];
+    }
+  }
+
+  private removePendingPreviews(entry: Entry): void {
+    for (const name of this.pendingPreviews(entry)) {
+      fs.rmSync(path.join(this.options.thumbnailDir, name), { force: true });
+    }
   }
 
   private cleanupPartials(entry: Entry): void {

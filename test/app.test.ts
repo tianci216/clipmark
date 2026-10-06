@@ -324,13 +324,27 @@ function fakeDownloader(status: { path: string; version: string } | null = { pat
       cookieResult = r;
     },
     /** Pretend yt-dlp wrote a partial file, then finished with the final file. */
-    finish(run: FakeRun, filename: string) {
+    finish(
+      run: FakeRun,
+      filename: string,
+      opts: { bytes?: string; source?: string | null; preview?: string } = {},
+    ) {
       const dir = path.dirname(run.request.outputTemplate);
-      fs.writeFileSync(path.join(dir, filename), "video bytes");
-      run.events.onExit({ code: 0, filepath: path.join(dir, filename), stderrTail: "" });
+      fs.writeFileSync(path.join(dir, filename), opts.bytes ?? "video bytes");
+      // yt-dlp writes the preview image into the thumbnail store before the video lands.
+      if (opts.preview) {
+        fs.mkdirSync(path.dirname(run.request.previewBase), { recursive: true });
+        fs.writeFileSync(`${run.request.previewBase}.jpg`, opts.preview);
+      }
+      run.events.onExit({
+        code: 0,
+        filepath: path.join(dir, filename),
+        stderrTail: "",
+        source: opts.source ?? null,
+      });
     },
     fail(run: FakeRun, stderr: string) {
-      run.events.onExit({ code: 1, filepath: null, stderrTail: stderr });
+      run.events.onExit({ code: 1, filepath: null, stderrTail: stderr, source: null });
     },
   };
 }
@@ -470,7 +484,7 @@ describe("DELETE /api/downloads/:id", () => {
     expect(del.status).toBe(204);
     expect(run.cancelled).toBe(true);
     // yt-dlp exits after the SIGINT; the queue then cleans up and forgets the job.
-    run.events.onExit({ code: 130, filepath: null, stderrTail: "" });
+    run.events.onExit({ code: 130, filepath: null, stderrTail: "", source: null });
     await settle();
 
     expect((await get("/api/downloads")).body).toEqual([]);
@@ -588,5 +602,129 @@ describe("yt-dlp status", () => {
     server = null;
     await start({ downloader: fakeDownloader(null).downloader });
     expect((await get("/api/settings")).body.ytDlp).toBeNull();
+  });
+});
+
+/* ---------------- Video Source (ADR-0009) ---------------- */
+
+/** One tagged JSON line as yt-dlp prints it after the move (the text after the tag). */
+const SOURCE_JSON = JSON.stringify({
+  webpage_url: "https://www.youtube.com/watch?v=abc123",
+  title: "ILHC 2024 – Strictly Lindy Finals",
+  description: "Six couples.\n\n0:00 Intro",
+  channel: "ILHC",
+  uploader: "ilhc-media",
+  upload_date: "20240826",
+  id: "abc123",
+});
+
+const ILHC_SOURCE = {
+  url: "https://www.youtube.com/watch?v=abc123",
+  title: "ILHC 2024 – Strictly Lindy Finals",
+  description: "Six couples.\n\n0:00 Intro",
+  channel: "ILHC",
+  uploadDate: "2024-08-26",
+  siteId: "abc123",
+};
+
+type TreeVideo = { file: string; hash: string; thumbnail: string | null; source: unknown };
+
+async function treeVideo(file: string): Promise<TreeVideo | undefined> {
+  const tree = (await get("/api/tree")).body as { videos: TreeVideo[] };
+  return tree.videos.find((v) => v.file === file);
+}
+
+describe("Video Source", () => {
+  it("a finished Download saves its Source, shown on the Video in the tree", async () => {
+    const lib = folder("lib", { "local.mp4": "local bytes" });
+    const fake = fakeDownloader();
+    await start({ env: { CLIPMARK_VIDEO_DIR: lib }, downloader: fake.downloader });
+    await post("/api/downloads", { url: "https://youtu.be/abc123", folder: "" });
+    await settle();
+    fake.finish(fake.runs[0], "ILHC [abc123].mp4", { bytes: "ilhc bytes", source: SOURCE_JSON });
+
+    const video = await treeVideo("ILHC [abc123].mp4");
+    expect(video?.source).toEqual(expect.objectContaining(ILHC_SOURCE));
+    expect((await treeVideo("local.mp4"))?.source).toBeNull();
+  });
+
+  it("the preview image is the thumbnail, served locally from the thumbnail store", async () => {
+    const lib = folder("lib", { "local.mp4": "local bytes" });
+    const fake = fakeDownloader();
+    await start({ env: { CLIPMARK_VIDEO_DIR: lib }, downloader: fake.downloader });
+    await post("/api/downloads", { url: "https://youtu.be/abc123", folder: "" });
+    await settle();
+    expect(fake.runs[0].request.previewBase.startsWith(path.join(root, "thumbs") + path.sep)).toBe(true);
+    fake.finish(fake.runs[0], "ILHC [abc123].mp4", {
+      bytes: "ilhc bytes",
+      source: SOURCE_JSON,
+      preview: "youtube preview",
+    });
+
+    const video = await treeVideo("ILHC [abc123].mp4");
+    expect(video?.thumbnail).toMatch(/^\/thumbnails\//);
+    expect(video?.source).toMatchObject({ preview: video?.thumbnail });
+    const res = await fetch(base + video!.thumbnail!);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("youtube preview");
+    // Nothing but the video itself lands in the Library Folder.
+    expect(fs.readdirSync(lib).sort()).toEqual(["ILHC [abc123].mp4", "local.mp4"]);
+    // A Video without a Source keeps its mid-frame thumbnail.
+    expect((await treeVideo("local.mp4"))?.thumbnail).toBe(`/thumbnails/${computeFileHash(path.join(lib, "local.mp4"))}.jpg`);
+  });
+
+  it("the Source survives renaming and moving the file inside the Library Folder", async () => {
+    const lib = folder("lib", { "Classes/.keep": "" });
+    const fake = fakeDownloader();
+    await start({ env: { CLIPMARK_VIDEO_DIR: lib }, downloader: fake.downloader });
+    await post("/api/downloads", { url: "https://youtu.be/abc123", folder: "" });
+    await settle();
+    fake.finish(fake.runs[0], "ILHC [abc123].mp4", { bytes: "ilhc bytes", source: SOURCE_JSON, preview: "img" });
+    const before = await treeVideo("ILHC [abc123].mp4");
+
+    fs.renameSync(path.join(lib, "ILHC [abc123].mp4"), path.join(lib, "Classes", "finals.mp4"));
+    const after = await treeVideo("Classes/finals.mp4");
+    expect(after?.hash).toBe(before?.hash);
+    expect(after?.source).toEqual(before?.source);
+    expect(after?.thumbnail).toBe(before?.thumbnail);
+  });
+
+  it("a Download whose Source output can't be parsed still lands, without a Source", async () => {
+    const lib = folder("lib");
+    const fake = fakeDownloader();
+    await start({ env: { CLIPMARK_VIDEO_DIR: lib }, downloader: fake.downloader });
+    await post("/api/downloads", { url: "https://youtu.be/abc123", folder: "" });
+    await settle();
+    fake.finish(fake.runs[0], "ILHC [abc123].mp4", {
+      bytes: "ilhc bytes",
+      source: '{"webpage_url": "https://www.youtube.com/watch?v=abc', // cut off mid-line
+      preview: "img",
+    });
+
+    expect((await get("/api/downloads")).body[0]).toMatchObject({ state: "done", file: "ILHC [abc123].mp4" });
+    const video = await treeVideo("ILHC [abc123].mp4");
+    expect(video?.source).toBeNull();
+    expect(video?.thumbnail).toBe(`/thumbnails/${video?.hash}.jpg`);
+    // The unclaimed preview does not linger in the thumbnail store.
+    expect(fs.readdirSync(path.join(root, "thumbs")).filter((n) => n.startsWith("source-"))).toEqual([]);
+  });
+
+  it("a later Download of the same file overwrites its Source", async () => {
+    const lib = folder("lib", { "A/.keep": "" });
+    const fake = fakeDownloader();
+    await start({ env: { CLIPMARK_VIDEO_DIR: lib }, downloader: fake.downloader });
+    await post("/api/downloads", { url: "https://youtu.be/abc123", folder: "" });
+    await settle();
+    fake.finish(fake.runs[0], "ILHC [abc123].mp4", { bytes: "ilhc bytes", source: SOURCE_JSON });
+    await post("/api/downloads", { url: "https://youtu.be/abc123", folder: "A" });
+    await settle();
+    const retitled = JSON.stringify({ ...JSON.parse(SOURCE_JSON), title: "Renamed upstream" });
+    fake.finish(fake.runs[1], "ILHC [abc123].mp4", { bytes: "ilhc bytes", source: retitled });
+
+    const tree = (await get("/api/tree")).body as { videos: TreeVideo[] };
+    expect(tree.videos.map((v) => (v.source as { title: string } | null)?.title)).toEqual([
+      "Renamed upstream",
+      "Renamed upstream",
+    ]);
   });
 });

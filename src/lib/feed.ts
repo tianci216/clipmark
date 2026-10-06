@@ -1,4 +1,5 @@
 import type { Clip, Download, Video } from "./api";
+import { dirname, folderLabel, formatUploadDate } from "./format";
 import { orphanVideoFor } from "./rail";
 import { matchesTokens } from "./tags";
 
@@ -55,6 +56,21 @@ export interface Feed {
   filtering: boolean;
   /** Why there are no cards: nothing in the library, or nothing matches the filter. */
   empty: "library" | "filter" | null;
+}
+
+/**
+ * A Video card's two meta lines, minus the clip count: `place` is "channel · folder"
+ * (just the folder without a channel); `origin` follows the count — the upload date,
+ * "local file" without a Source, or null when the Source has no date.
+ */
+export function cardMeta(video: Video): { place: string; origin: string | null } {
+  const folder = folderLabel(dirname(video.file));
+  const { source } = video;
+  if (!source) return { place: folder, origin: "local file" };
+  return {
+    place: source.channel ? `${source.channel} · ${folder}` : folder,
+    origin: source.uploadDate ? formatUploadDate(source.uploadDate) : null,
+  };
 }
 
 const byStart = (a: Clip, b: Clip) => a.startSeconds - b.startSeconds || a.id - b.id;

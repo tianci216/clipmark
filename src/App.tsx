@@ -19,6 +19,7 @@ import { applyAppearance, type Appearance } from "./lib/appearance";
 import type { DownloadControls } from "./lib/downloadControls";
 import { buildFeed } from "./lib/feed";
 import { FeedPane } from "./lib/FeedPane";
+import { displayName } from "./lib/format";
 import { MusicPane, MusicSearch } from "./lib/MusicPane";
 import { MusicPlayer } from "./lib/MusicPlayer";
 import { PlayerPane } from "./lib/PlayerPane";
@@ -370,6 +371,7 @@ export function App() {
         <button className="cm-back" type="button" onClick={home}>
           ‹ Library
         </button>
+        <span className="cm-phead__title">{displayName(target.video)}</span>
       </header>
     ) : (
       <TopBar

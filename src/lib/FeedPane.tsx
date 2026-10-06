@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { Clip, Video } from "./api";
 import type { DownloadControls } from "./downloadControls";
-import type { DownloadCard, Feed, VideoCard } from "./feed";
-import { dirname, folderLabel, formatTime, title } from "./format";
+import { cardMeta, type DownloadCard, type Feed, type VideoCard } from "./feed";
+import { displayName, folderLabel, formatTime } from "./format";
 import { stripDuration } from "./Strip";
 
 /** A running Download with no progress for this long is probably waiting on the Mac's Keychain prompt. */
@@ -84,7 +84,8 @@ function VideoCardView({
   const { video, clips, missing } = card;
   const d = stripDuration(video.durationSeconds, clips);
   const pct = (x: number) => `${Math.max(0, Math.min(100, (x / d) * 100))}%`;
-  const name = title(video.file);
+  const name = displayName(video);
+  const meta = cardMeta(video);
   // While filtering, the thumbnail lands on the first matching Clip, looping.
   const firstMatch = filtering ? (card.firstMatches[0] ?? null) : null;
   return (
@@ -121,7 +122,7 @@ function VideoCardView({
         <button type="button" className="cm-card__title" onClick={() => onOpen(video, null)}>
           {name}
         </button>
-        <div className="cm-card__meta">{folderLabel(dirname(video.file))}</div>
+        <div className="cm-card__meta">{meta.place}</div>
         <div className="cm-card__meta">
           {filtering ? (
             <>
@@ -133,6 +134,7 @@ function VideoCardView({
           ) : (
             `${card.total} clip${card.total === 1 ? "" : "s"}`
           )}
+          {meta.origin && ` · ${meta.origin}`}
         </div>
         {filtering && (
           <ul className="cm-card__matches">

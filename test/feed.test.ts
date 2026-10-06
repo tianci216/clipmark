@@ -11,6 +11,7 @@ function video(hash: string, file: string, fileMtime: number | null, duration: n
     thumbnail: null,
     clipCount: 0,
     firstClipStart: null,
+    source: null,
   };
 }
 

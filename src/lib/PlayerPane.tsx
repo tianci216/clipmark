@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Clip, ClipInput, Video } from "./api";
 import { videoUrl } from "./api";
-import { basename, dirname, folderLabel, formatTime } from "./format";
+import { basename, dirname, displayName, folderLabel, formatTime, formatUploadDate, sourceHost } from "./format";
 import { PillInput, plainText, TagPills } from "./PillInput";
 import type { Pill, PillConfig } from "./pills";
 import { buildTermIndex, commitDraft, tagField } from "./pills";
@@ -213,9 +213,7 @@ export function PlayerPane({
                       </span>
                       <span className="cm-next__body">
                         <span className="cm-next__name">{clip.tags.join(" · ") || "untitled"}</span>
-                        <span className="cm-next__video">
-                          {folderLabel(dirname(rv.file))} › {basename(rv.file)}
-                        </span>
+                        <span className="cm-next__video">{displayName(rv)}</span>
                       </span>
                     </button>
                   );
@@ -225,12 +223,74 @@ export function PlayerPane({
           )}
         </aside>
 
-        {/* Placeholder until the Source panel: folder and file name. */}
-        <div className="cm-winfo">
-          <h1 className="cm-winfo__title">{basename(video.file)}</h1>
-          <div className="cm-winfo__meta">{folderLabel(dirname(video.file))}</div>
-        </div>
+        <WatchInfo video={video} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The video info under the player: the Source panel (title, channel · upload date · page
+ * link, description collapsed with MORE / LESS), or folder and file name for a local file.
+ */
+function WatchInfo({ video }: { video: Video }) {
+  const [open, setOpen] = useState(false);
+  // The toggle shows only when the collapsed description actually hides lines.
+  const [clipped, setClipped] = useState(false);
+  const descRef = useRef<HTMLParagraphElement>(null);
+  const src = video.source;
+  useLayoutEffect(() => {
+    const el = descRef.current;
+    if (!el || open) return;
+    const measure = () => setClipped(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [open, src?.description]);
+  if (!src) {
+    return (
+      <div className="cm-winfo">
+        <h1 className="cm-winfo__title">{basename(video.file)}</h1>
+        <div className="cm-winfo__meta">{folderLabel(dirname(video.file))}</div>
+      </div>
+    );
+  }
+  const meta = [src.channel, src.uploadDate ? formatUploadDate(src.uploadDate) : null].filter(
+    (x): x is string => !!x,
+  );
+  return (
+    <div className="cm-winfo">
+      <h1 className="cm-winfo__title">{src.title}</h1>
+      <div className="cm-winfo__meta">
+        {meta.map((m) => (
+          <Fragment key={m}>
+            <span>{m}</span>
+            <span aria-hidden="true">·</span>
+          </Fragment>
+        ))}
+        {/* A new-window target; the shell routes it to the default browser. */}
+        <a href={src.url} target="_blank" rel="noopener noreferrer">
+          {sourceHost(src.url)} ↗
+        </a>
+      </div>
+      {src.description.trim() !== "" && (
+        <div className="cm-winfo__desc">
+          <p ref={descRef} className={"cm-source__desc" + (open ? "" : " is-clamped")}>
+            {src.description}
+          </p>
+          {(open || clipped) && (
+            <button
+              type="button"
+              className="cm-source__more"
+              aria-expanded={open}
+              onClick={() => setOpen((o) => !o)}
+            >
+              {open ? "Less ▴" : "More ▾"}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

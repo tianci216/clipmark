@@ -104,6 +104,23 @@ input, select, textarea { font: inherit; color: inherit; }
   margin: 2px 0 6px; word-break: break-word;
 }
 .cm-winfo__meta { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: 13px; color: var(--cm-muted); }
+.cm-winfo__meta a { color: var(--cm-accent); text-decoration: none; }
+.cm-winfo__meta a:hover { text-decoration: underline; }
+/* the Source description: a raised box, collapsed to three lines until MORE */
+.cm-winfo__desc { margin-top: 12px; background: var(--cm-raised); border-radius: 10px; padding: 10px 14px 8px; }
+.cm-source__desc {
+  font-size: 13px; line-height: 1.55; color: var(--cm-ink); margin: 0;
+  white-space: pre-line; overflow-wrap: anywhere;
+}
+.cm-source__desc.is-clamped {
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  white-space: normal;
+}
+.cm-source__more {
+  margin-top: 6px; font-family: var(--cm-mono); font-size: 10px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--cm-accent);
+}
+.cm-source__more:hover { text-decoration: underline; }
 .cm-panel {
   background: var(--cm-surface); border: 1px solid var(--cm-line); border-radius: 10px;
   padding: 12px; display: flex; flex-direction: column; gap: 10px;
@@ -383,7 +400,12 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 .cm-back {
   color: var(--cm-accent); font-size: 15px; padding: 4px 0; text-align: left;
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;
+}
+/* the watch page's display name, beside "‹ Library" */
+.cm-phead__title {
+  min-width: 0; flex: 1; text-align: right; font-size: 13px; color: var(--cm-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* ---------- music tab (Mixxx library) ---------- */
 .mx-main { min-width: 0; }
