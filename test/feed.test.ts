@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildFeed, type FeedCard, type SearchPill } from "../src/lib/feed";
+import {
+  buildFeed,
+  chipOn,
+  folderTerms,
+  noMatchText,
+  searchChips,
+  toggleChip,
+  type FeedCard,
+  type SearchPill,
+} from "../src/lib/feed";
 import type { Clip, Download, Video } from "../src/lib/api";
 
 function video(hash: string, file: string, fileMtime: number | null, duration: number | null = 120): Video {
@@ -145,6 +154,45 @@ describe("buildFeed", () => {
     });
   });
 
+  describe("with a folder pill", () => {
+    const nested = video("ddd", "Choreography/Sweet Vanilla/b-side.mp4", 2500);
+    const parent = video("eee", "Choreography/intro.mp4", 2400);
+    const root = video("fff", "loose.mp4", 2300);
+    const twin = video("aaa", "Classes/swing copy.mp4", 900);
+    const cs = [
+      clip(1, "aaa", swing.file, 10, ["swing out"], ["Dax Hock"]),
+      clip(2, "aaa", swing.file, 30, ["kick"]),
+      clip(3, "bbb", lindy.file, 5, ["swing out"]),
+      clip(4, "ddd", nested.file, 5, ["kick"]),
+      clip(5, "eee", parent.file, 5, ["kick"]),
+      clip(6, "fff", root.file, 5, ["kick"]),
+    ];
+    const all = [swing, lindy, nested, parent, root, twin];
+    const folder = (text: string): SearchPill => ({ kind: "folder", text });
+
+    it("keeps only Videos in exactly that folder, case-insensitively, with every Clip matching", () => {
+      const feed = buildFeed(all, cs, [folder("choreography/sweet vanilla")], []);
+      expect(files(feed.cards)).toEqual([swing.file, nested.file]);
+      const [card] = feed.cards;
+      expect(card.kind === "video" && [card.matching, card.total]).toEqual([2, 2]);
+    });
+
+    it("filters a shared Hash by the card's own file, not the Clip's", () => {
+      expect(files(buildFeed(all, cs, [folder("Classes")], []).cards)).toEqual([lindy.file, twin.file]);
+    });
+
+    it("names the Library Folder itself as a folder", () => {
+      expect(files(buildFeed(all, cs, [folder("Library Folder")], []).cards)).toEqual([root.file]);
+    });
+
+    it("combines with Dancer and Tag pills, every pill matching", () => {
+      const feed = buildFeed(all, cs, [folder("Choreography/Sweet Vanilla"), ...tagPills("kick")], []);
+      expect(files(feed.cards)).toEqual([swing.file, nested.file]);
+      const [card] = feed.cards;
+      expect(card.kind === "video" && [card.matching, card.total, [...card.matchIds]]).toEqual([1, 2, [2]]);
+    });
+  });
+
   it("is empty because of the library when there are no Videos and no Downloads", () => {
     expect(buildFeed([], [], [], []).empty).toBe("library");
   });
@@ -181,5 +229,69 @@ describe("buildFeed with Downloads", () => {
     const feed = buildFeed([lindy], cs, tagPills("swing"), [job(1, "running")]);
     expect(files(feed.cards)).toEqual([lindy.file]);
     expect(buildFeed([lindy], cs, tagPills("tango"), [job(1, "running")]).empty).toBe("filter");
+  });
+});
+
+describe("searchChips", () => {
+  it("lists the most-used Dancers and Tags together, by Clip count then A-Z, at most 16", () => {
+    const cs = [
+      clip(1, "aaa", swing.file, 1, ["swing out", "kick"], ["Dax Hock"]),
+      clip(2, "aaa", swing.file, 2, ["Swing Out"], ["dax hock", "Sarah Breck"]),
+      clip(3, "aaa", swing.file, 3, ["swing out"], ["Dax Hock"]),
+      clip(4, "aaa", swing.file, 4, ["kick"], []),
+    ];
+    expect(searchChips(cs)).toEqual([
+      { kind: "dancer", text: "Dax Hock", count: 3 },
+      { kind: "tag", text: "swing out", count: 3 },
+      { kind: "tag", text: "kick", count: 2 },
+      { kind: "dancer", text: "Sarah Breck", count: 1 },
+    ]);
+    const many = Array.from({ length: 20 }, (_, i) => clip(i, "aaa", swing.file, i, [`move ${String(i).padStart(2, "0")}`]));
+    expect(searchChips(many).map((c) => c.text)).toEqual(
+      Array.from({ length: 16 }, (_, i) => `move ${String(i).padStart(2, "0")}`),
+    );
+  });
+});
+
+describe("folderTerms", () => {
+  it("counts the Clips on each folder's Videos, most first, skipping folders without Clips", () => {
+    const twin = video("aaa", "Classes/swing copy.mp4", 900);
+    const loose = video("fff", "loose.mp4", 800);
+    const cs = [
+      clip(1, "aaa", swing.file, 1, ["a"]),
+      clip(2, "aaa", swing.file, 2, ["b"]),
+      clip(3, "bbb", lindy.file, 3, ["c"]),
+      clip(4, "zzz", "Gone/x.mp4", 3, ["d"]),
+      clip(5, "fff", loose.file, 3, ["e"]),
+    ];
+    expect(folderTerms([swing, lindy, solo, twin, loose], cs)).toEqual([
+      { text: "Classes", count: 3 },
+      { text: "Choreography/Sweet Vanilla", count: 2 },
+      { text: "Gone", count: 1 },
+      { text: "Library Folder", count: 1 },
+    ]);
+  });
+});
+
+describe("toggleChip", () => {
+  const chip = { kind: "dancer", text: "Dax Hock" } as const;
+
+  it("adds a chip that is not in the search, after the pills already there", () => {
+    expect(toggleChip(tagPills("kick"), chip)).toEqual([...tagPills("kick"), { kind: "dancer", text: "Dax Hock" }]);
+  });
+
+  it("removes a chip already in the search, ignoring case, and leaves other kinds alone", () => {
+    const search: SearchPill[] = [dancer("dax hock"), ...tagPills("Dax Hock")];
+    expect(toggleChip(search, chip)).toEqual(tagPills("Dax Hock"));
+    expect(chipOn(search, chip)).toBe(true);
+    expect(chipOn(tagPills("dax hock"), chip)).toBe(false);
+  });
+});
+
+describe("noMatchText", () => {
+  it("names every pill of the search", () => {
+    expect(noMatchText([dancer("Dax Hock"), ...tagPills("kick"), { kind: "folder", text: "Classes" }])).toBe(
+      "No clips match Dax Hock + kick + Classes",
+    );
   });
 });

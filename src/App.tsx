@@ -18,7 +18,7 @@ import {
 } from "./lib/api";
 import { applyAppearance, type Appearance } from "./lib/appearance";
 import type { DownloadControls } from "./lib/downloadControls";
-import { buildFeed, type SearchPill } from "./lib/feed";
+import { buildFeed, folderTerms, searchChips, type SearchPill } from "./lib/feed";
 import { FeedPane } from "./lib/FeedPane";
 import { displayName } from "./lib/format";
 import { MusicPane, MusicSearch } from "./lib/MusicPane";
@@ -240,9 +240,15 @@ export function App() {
   );
 
   const searchConfig = useMemo(
-    () => searchField(buildTermIndex(clips.map((c) => c.dancers)), buildTermIndex(clips.map((c) => c.tags))),
-    [clips],
+    () =>
+      searchField(
+        buildTermIndex(clips.map((c) => c.dancers)),
+        buildTermIndex(clips.map((c) => c.tags)),
+        folderTerms(videos, clips),
+      ),
+    [videos, clips],
   );
+  const chips = useMemo(() => searchChips(clips), [clips]);
   const feed = useMemo(
     () => buildFeed(videos, clips, search, downloads),
     [videos, clips, search, downloads],
@@ -373,7 +379,15 @@ export function App() {
       />
     </section>
   ) : (
-    <FeedPane feed={feed} pills={search} downloads={downloadControls} scrollRef={feedScroll} onOpen={open} />
+    <FeedPane
+      feed={feed}
+      pills={search}
+      chips={chips}
+      onPills={changeSearch}
+      downloads={downloadControls}
+      scrollRef={feedScroll}
+      onOpen={open}
+    />
   );
 
   const musicPage = (
@@ -403,8 +417,8 @@ export function App() {
                 config={searchConfig}
                 pills={search}
                 onPills={changeSearch}
-                placeholder="Search dancers or tags"
-                ariaLabel="Search dancers and tags"
+                placeholder="Search dancers, tags or folders"
+                ariaLabel="Search dancers, tags and folders"
               />
             </div>
           )

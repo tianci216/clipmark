@@ -50,14 +50,16 @@ export function dancerField(index: Term[]): PillConfig<"dancer"> {
 }
 
 /**
- * The top-bar search: Dancer and Tag pills, suggested together and labelled by kind. Typed text
- * becomes a Dancer pill when it is part of a known Dancer's name, otherwise a Tag pill.
+ * The top-bar search: Dancer, Tag and folder pills, suggested together and labelled by kind.
+ * Typed text becomes a Dancer pill when it is part of a known Dancer's name, otherwise a Tag
+ * pill; a folder pill only comes from a suggestion (or a card's folder name).
  */
-export function searchField(dancers: Term[], tags: Term[]): PillConfig<"dancer" | "tag"> {
+export function searchField(dancers: Term[], tags: Term[], folders: Term[]): PillConfig<"dancer" | "tag" | "folder"> {
   return {
     kinds: {
       dancer: { label: "dancer", index: dancers, normalize: normalizeDancer },
       tag: { label: "tag", index: tags, normalize: normalizeTag },
+      folder: { label: "folder", index: folders, normalize: (raw) => raw.trim() },
     },
     freeKind: (text) => {
       const q = fold(text.trim());
