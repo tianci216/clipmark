@@ -11,7 +11,7 @@ export function TagFilter({
   index: TagEntry[];
   tokens: string[];
   onTokens: (tokens: string[]) => void;
-  /** Sidebar variant: no label, tighter input. */
+  /** Top-bar variant: no label, tighter input. */
   compact?: boolean;
 }) {
   const [draft, setDraft] = useState("");

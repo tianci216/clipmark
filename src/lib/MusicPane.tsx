@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { formatDuration, type SortColumn } from "./musicApi";
 import type { AudioPlayer } from "./useAudioPlayer";
 import type { MusicLibrary } from "./useMusicLibrary";
@@ -31,10 +31,13 @@ export function MusicPane({
   library,
   player,
   onSettings,
+  menu,
 }: {
   library: MusicLibrary;
   player: AudioPlayer;
   onSettings: () => void;
+  /** Opens the crates and playlists drawer, before the title. */
+  menu?: ReactNode;
 }) {
   const { view, tracks, sort, toggleSort, status, error, queryError } = library;
   const listRef = useRef<HTMLDivElement>(null);
@@ -49,6 +52,7 @@ export function MusicPane({
   return (
     <section className="cm-main mx-main">
       <header className="mx-head">
+        {menu}
         <h1 className="mx-title">{title}</h1>
         <span className="mx-count cm-mono">
           {status === "ready" ? `${tracks.length} tracks` : ""}

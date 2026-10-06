@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Clip, ClipInput, Video } from "./api";
 import { videoUrl } from "./api";
 import { basename, dirname, folderLabel, formatTime } from "./format";
@@ -22,6 +22,7 @@ export function PlayerPane({
   onSave,
   onRemove,
   onOpen,
+  active = true,
 }: {
   video: Video;
   loopClip: Clip | null;
@@ -32,10 +33,16 @@ export function PlayerPane({
   onSave: (video: Video, input: ClipInput) => Promise<void>;
   onRemove: (clip: Clip) => Promise<void>;
   onOpen: (video: Video, clip: Clip | null) => void;
+  /** False while the page is hidden (behind Music or Settings): the video pauses. */
+  active?: boolean;
 }) {
   const player = useVideoPlayer(
     loopClip ? { start: loopClip.startSeconds, end: loopClip.endSeconds } : null,
   );
+  const { videoRef } = player;
+  useEffect(() => {
+    if (!active) videoRef.current?.pause();
+  }, [active, videoRef]);
   const { own, others } = useMemo(() => railFor(video, videos, clips), [video, videos, clips]);
   const duration = player.duration > 0 ? player.duration : stripDuration(video.durationSeconds, own);
 

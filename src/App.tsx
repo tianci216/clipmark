@@ -15,18 +15,18 @@ import {
   type Video,
 } from "./lib/api";
 import type { DownloadControls } from "./lib/downloadControls";
-import { dirname, folderLabel } from "./lib/format";
-import { IndexPane } from "./lib/IndexPane";
-import { buildLibraryTree } from "./lib/libraryTree";
+import { buildFeed } from "./lib/feed";
+import { FeedPane } from "./lib/FeedPane";
+import { MusicNav } from "./lib/MusicNav";
 import { MusicPane } from "./lib/MusicPane";
 import { MusicPlayer } from "./lib/MusicPlayer";
-import { MusicNav, MusicSidebar } from "./lib/MusicSidebar";
-import { PhoneLibrary } from "./lib/PhoneLibrary";
 import { PlayerPane } from "./lib/PlayerPane";
 import { SettingsPane } from "./lib/SettingsPane";
-import { Sidebar, type Target } from "./lib/Sidebar";
+import { Slide } from "./lib/Slide";
 import { TabSwitch, type Tab } from "./lib/TabSwitch";
+import { TagFilter } from "./lib/TagFilter";
 import { buildTagIndex } from "./lib/tags";
+import { TopBar } from "./lib/TopBar";
 import { useAudioPlayer } from "./lib/useAudioPlayer";
 import { PHONE_QUERY, useMedia } from "./lib/useMedia";
 import { useMusicLibrary } from "./lib/useMusicLibrary";
@@ -38,6 +38,12 @@ const POLL_IDLE_MS = 5000;
 const TOAST_MS = 8000;
 const TAB_KEY = "clipmark.tab";
 
+/** What the Clips page shows instead of the feed: a Video, optionally looping one of its Clips. */
+export interface Target {
+  video: Video;
+  loopClip: Clip | null;
+}
+
 function readTab(): Tab {
   try {
     return localStorage.getItem(TAB_KEY) === "music" ? "music" : "clips";
@@ -47,12 +53,12 @@ function readTab(): Tab {
 }
 
 /**
- * Persistent Explorer shell (ADR-0001 amendment). Selection state lives here:
- * the tag filter, the target Video + loop Clip, the phone's drilled-into folder,
- * whether the main pane shows Settings, and the scroll positions the index /
- * folder screen restore on return. The Clips / Music tab switch lives here too, with
- * the Music tab's library state and the one audio player, so music keeps playing
- * across tabs.
+ * The app frame: one top bar (Clips | Music, search, Download, Settings) over a
+ * double-width track holding the Clips page (the library feed, or the watch page for
+ * a target Video) and the Music page side by side; switching tabs slides the track.
+ * Selection state lives here: the tag filter, the target Video + loop Clip, whether
+ * Settings covers the pages, and the feed's scroll position. The Music tab's library
+ * state and the one audio player live here too, so music keeps playing on either tab.
  */
 export function App() {
   const [videos, setVideos] = useState<Video[]>([]);
@@ -62,7 +68,6 @@ export function App() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [tokens, setTokens] = useState<string[]>([]);
   const [target, setTarget] = useState<Target | null>(null);
-  const [phoneFolder, setPhoneFolder] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   // Settings replaces the main pane / screen; leaving it restores whatever was there.
   const [showSettings, setShowSettings] = useState(false);
@@ -71,8 +76,7 @@ export function App() {
   const [scanning, setScanning] = useState<Set<number>>(() => new Set());
   const [toast, setToast] = useState<{ title: string; video: Video } | null>(null);
   const landing = useRef(new Set<number>());
-  const indexScroll = useRef(0);
-  const phoneScroll = useRef(0);
+  const feedScroll = useRef(0);
   const isPhone = useMedia(PHONE_QUERY);
   const [tab, setTabState] = useState<Tab>(readTab);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -195,15 +199,13 @@ export function App() {
   );
 
   const tagIndex = useMemo(() => buildTagIndex(clips), [clips]);
-  const tree = useMemo(
-    () => buildLibraryTree(videos, clips, tokens, downloads),
+  const feed = useMemo(
+    () => buildFeed(videos, clips, tokens, downloads),
     [videos, clips, tokens, downloads],
   );
 
   const open = useCallback((video: Video, clip: Clip | null) => {
     setTarget({ video, loopClip: clip });
-    // On the phone, back from the player lands in the video's own folder.
-    setPhoneFolder(dirname(video.file));
     setShowSettings(false);
   }, []);
 
@@ -213,14 +215,28 @@ export function App() {
   }, []);
 
   const openSettings = useCallback(() => setShowSettings(true), []);
-  const closeSettings = useCallback(() => setShowSettings(false), []);
+  const toggleSettings = useCallback(() => setShowSettings((s) => !s), []);
+
+  // No logo: clicking Clips while already on Clips returns to the feed.
+  const pickTab = useCallback(
+    (next: Tab) => {
+      if (next === "clips" && tab === "clips") home();
+      else setTab(next);
+    },
+    [tab, home, setTab],
+  );
+
+  // The search sits in the top bar on every Clips page; filtering from the watch page returns to the feed.
+  const changeTokens = useCallback((next: string[]) => {
+    setTokens(next);
+    setTarget(null);
+  }, []);
 
   const handleSaved = useCallback(
     (saved: Settings) => {
       setSettings(saved);
       // The folder applies live on the server; the library reflects it on the next fetch.
       setTarget(null);
-      setPhoneFolder(null);
       loadLibrary().catch(() => setStatus("error"));
       reloadMusic();
     },
@@ -278,176 +294,113 @@ export function App() {
     );
   }
 
-  const videoPlayer = target && (
-    <PlayerPane
-      key={`${target.video.file}:${target.loopClip ? target.loopClip.id : "plain"}`}
-      video={target.video}
-      loopClip={target.loopClip}
-      orphan={!videos.some((v) => v.file === target.video.file)}
-      videos={videos}
-      clips={clips}
-      phone={isPhone}
-      onSave={handleSave}
-      onRemove={handleRemove}
-      onOpen={open}
+  const onMusic = tab === "music";
+  // The Clips page is hidden behind Music or Settings: it is inert and its video pauses.
+  const clipsHidden = onMusic || showSettings;
+
+  const clipsPage = target ? (
+    <section className="cm-main">
+      <PlayerPane
+        key={`${target.video.file}:${target.loopClip ? target.loopClip.id : "plain"}`}
+        video={target.video}
+        loopClip={target.loopClip}
+        orphan={!videos.some((v) => v.file === target.video.file)}
+        videos={videos}
+        clips={clips}
+        phone={isPhone}
+        onSave={handleSave}
+        onRemove={handleRemove}
+        onOpen={open}
+        active={!clipsHidden}
+      />
+    </section>
+  ) : (
+    <FeedPane feed={feed} tokens={tokens} downloads={downloadControls} scrollRef={feedScroll} onOpen={open} />
+  );
+
+  const musicPage = (
+    <MusicPane
+      library={music}
+      player={player}
+      onSettings={openSettings}
+      menu={
+        <button
+          className="mx-menu"
+          type="button"
+          aria-label="Crates and playlists"
+          title="Crates and playlists"
+          onClick={() => setDrawerOpen(true)}
+        >
+          ☰
+        </button>
+      }
     />
   );
 
-  const settingsPane = <SettingsPane settings={settings} onSaved={handleSaved} />;
+  const showPlayer = onMusic || player.display !== null;
 
-  const tabs = <TabSwitch tab={tab} onTab={setTab} />;
-  const showPlayer = tab === "music" || player.display !== null;
-  const playerBar = showPlayer && <MusicPlayer player={player} />;
-  const musicPane = <MusicPane library={music} player={player} onSettings={openSettings} />;
-
-  const toastEl = toast && (
-    <div className={"cm-toast" + (showPlayer ? " is-raised" : "")} role="status">
-      <span className="cm-toast__text">Downloaded {toast.title}</span>
-      <button
-        className="cm-toast__btn"
-        type="button"
-        onClick={() => {
-          open(toast.video, null);
-          setToast(null);
-        }}
-      >
-        Open
-      </button>
-      <button className="cm-toast__btn" type="button" aria-label="Dismiss" onClick={() => setToast(null)}>
-        ×
-      </button>
-    </div>
-  );
-
-  if (isPhone) {
-    if (showSettings) {
-      return (
-        <main className="cm-app cm-app--phone">
-          <header className="cm-phead">
-            <button className="cm-back" type="button" onClick={closeSettings}>
-              ‹ {tab === "music" ? "Music" : "Library"}
-            </button>
-          </header>
-          {settingsPane}
-          {playerBar}
-          {toastEl}
-        </main>
-      );
-    }
-    if (target) {
-      return (
-        <main className="cm-app cm-app--phone">
-          <header className="cm-phead">
-            <button className="cm-back" type="button" onClick={home}>
-              ‹ {folderLabel(dirname(target.video.file))}
-            </button>
-          </header>
-          <section className="cm-main">{videoPlayer}</section>
-          {playerBar}
-          {toastEl}
-        </main>
-      );
-    }
-    if (tab === "music") {
-      return (
-        <main className="cm-app cm-app--phone">
-          <header className="cm-phead">
-            <span className="mx-phead__left">
-              <button
-                className="mx-menu"
-                type="button"
-                aria-label="Crates and playlists"
-                onClick={() => setDrawerOpen(true)}
-              >
-                ☰
-              </button>
-              {tabs}
-            </span>
-            <button className="cm-actions__btn" type="button" title="Settings" aria-label="Settings" onClick={openSettings}>
-              ⚙
-            </button>
-          </header>
-          {musicPane}
-          {playerBar}
-          <div className={"mx-overlay" + (drawerOpen ? " is-open" : "")} onClick={() => setDrawerOpen(false)} />
-          <aside className={"mx-drawer" + (drawerOpen ? " is-open" : "")} aria-hidden={!drawerOpen}>
-            <MusicNav library={music} onPick={() => setDrawerOpen(false)} />
-          </aside>
-          {toastEl}
-        </main>
-      );
-    }
-    return (
-      <>
-        <PhoneLibrary
-          tree={tree}
-          tagIndex={tagIndex}
-          tokens={tokens}
-          onTokens={setTokens}
-          folder={phoneFolder}
-          onFolder={setPhoneFolder}
-          scrollRef={phoneScroll}
-          onOpen={open}
-          onSettings={openSettings}
-          downloads={downloadControls}
-          tabs={tabs}
-          footer={playerBar}
-        />
-        {toastEl}
-      </>
+  // On the phone the watch page swaps the top bar for a back header.
+  const header =
+    isPhone && target && !onMusic && !showSettings ? (
+      <header className="cm-phead">
+        <button className="cm-back" type="button" onClick={home}>
+          ‹ Library
+        </button>
+      </header>
+    ) : (
+      <TopBar
+        tabs={<TabSwitch tab={tab} onTab={pickTab} />}
+        search={
+          onMusic ? null : (
+            <div className="cm-search" role="search">
+              <TagFilter index={tagIndex} tokens={tokens} onTokens={changeTokens} compact />
+            </div>
+          )
+        }
+        downloads={onMusic ? null : downloadControls}
+        settingsOpen={showSettings}
+        onSettings={toggleSettings}
+      />
     );
-  }
-
-  if (tab === "music") {
-    return (
-      <main className="cm-app">
-        <div className="cm-cols">
-          <MusicSidebar
-            top={
-              <div className="cm-side__brandrow">
-                <div className="cm-brand">
-                  Clipmark<span>.</span>
-                </div>
-                {tabs}
-              </div>
-            }
-            library={music}
-            onPick={closeSettings}
-            onSettings={openSettings}
-          />
-          {showSettings ? settingsPane : musicPane}
-        </div>
-        {playerBar}
-        {toastEl}
-      </main>
-    );
-  }
 
   return (
-    <main className="cm-app">
-      <div className="cm-cols">
-        <Sidebar
-          tree={tree}
-          tagIndex={tagIndex}
-          tokens={tokens}
-          onTokens={setTokens}
-          target={target}
-          onHome={home}
-          onOpen={open}
-          onSettings={openSettings}
-          downloads={downloadControls}
-          tabs={tabs}
-        />
-        {showSettings ? (
-          settingsPane
-        ) : target ? (
-          <section className="cm-main">{videoPlayer}</section>
-        ) : (
-          <IndexPane tree={tree} tokens={tokens} scrollRef={indexScroll} onOpen={open} />
+    <main className={"cm-app" + (isPhone ? " cm-app--phone" : "")}>
+      {header}
+      <div className="cm-slider">
+        <div className={"cm-slider__track" + (onMusic ? " is-music" : "")}>
+          <Slide hidden={clipsHidden}>{clipsPage}</Slide>
+          <Slide hidden={!onMusic || showSettings}>{musicPage}</Slide>
+        </div>
+        {showSettings && (
+          <div className="cm-layer">
+            <SettingsPane settings={settings} onSaved={handleSaved} />
+          </div>
         )}
       </div>
-      {playerBar}
-      {toastEl}
+      {showPlayer && <MusicPlayer player={player} />}
+      <div className={"mx-overlay" + (drawerOpen ? " is-open" : "")} onClick={() => setDrawerOpen(false)} />
+      <aside className={"mx-drawer" + (drawerOpen ? " is-open" : "")} aria-hidden={!drawerOpen}>
+        <MusicNav library={music} onPick={() => setDrawerOpen(false)} />
+      </aside>
+      {toast && (
+        <div className={"cm-toast" + (showPlayer ? " is-raised" : "")} role="status">
+          <span className="cm-toast__text">Downloaded {toast.title}</span>
+          <button
+            className="cm-toast__btn"
+            type="button"
+            onClick={() => {
+              setTab("clips");
+              open(toast.video, null);
+              setToast(null);
+            }}
+          >
+            Open
+          </button>
+          <button className="cm-toast__btn" type="button" aria-label="Dismiss" onClick={() => setToast(null)}>
+            ×
+          </button>
+        </div>
+      )}
     </main>
   );
 }

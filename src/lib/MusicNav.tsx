@@ -1,14 +1,13 @@
-import type { ReactNode } from "react";
 import type { Collection, MusicView } from "./musicApi";
 import type { MusicLibrary } from "./useMusicLibrary";
 
-/** Library › All Tracks, then the Mixxx crates and playlists. */
+/** Library › All Tracks, then the Mixxx crates and playlists (in the Music drawer). */
 export function MusicNav({
   library,
   onPick,
 }: {
   library: MusicLibrary;
-  /** Called after a view is picked (the phone closes its drawer). */
+  /** Called after a view is picked (closes the drawer). */
   onPick?: () => void;
 }) {
   const { view, selectView, crates, playlists } = library;
@@ -45,33 +44,5 @@ export function MusicNav({
       {group("Crates", "crate", crates)}
       {group("Playlists", "playlist", playlists)}
     </nav>
-  );
-}
-
-/** Desktop sidebar for the Music tab: brand + tabs on top, the nav, the Settings gear below. */
-export function MusicSidebar({
-  top,
-  library,
-  onPick,
-  onSettings,
-}: {
-  top: ReactNode;
-  library: MusicLibrary;
-  /** Called after a view is picked (leaves Settings). */
-  onPick: () => void;
-  onSettings: () => void;
-}) {
-  return (
-    <aside className="cm-side">
-      <div className="cm-side__top">{top}</div>
-      <div className="cm-tree">
-        <MusicNav library={library} onPick={onPick} />
-      </div>
-      <div className="cm-side__foot">
-        <button className="cm-actions__btn" type="button" title="Settings" aria-label="Settings" onClick={onSettings}>
-          ⚙
-        </button>
-      </div>
-    </aside>
   );
 }
