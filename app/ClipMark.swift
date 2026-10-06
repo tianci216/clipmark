@@ -5,9 +5,30 @@ let PORT = 8899
 let HOME_URL = URL(string: "http://127.0.0.1:8899")!
 let HEALTH_URL = URL(string: "http://127.0.0.1:8899/api/health")!
 
-/// Marks the page as running inside this shell before any page script runs, so the web
-/// content reserves the traffic-light row (src/shell.css) only here, never in a browser.
-let SHELL_MARKER_JS = "document.documentElement.dataset.shell = 'macos';"
+/// Marks the page as running inside this shell, and reports the page background whenever
+/// the Color setting (<html data-color>) changes, so the window's title-bar row matches it.
+let SHELL_MARKER_JS = """
+document.documentElement.dataset.shell = 'macos';
+(function () {
+  function report() {
+    try {
+      var bg = getComputedStyle(document.body || document.documentElement).backgroundColor;
+      window.webkit.messageHandlers.shell.postMessage({ background: bg });
+    } catch (e) {}
+  }
+  new MutationObserver(report).observe(document.documentElement,
+    { attributes: true, attributeFilter: ['data-color'] });
+  document.addEventListener('DOMContentLoaded', report);
+})();
+"""
+
+/// "rgb(r, g, b)" / "rgba(r, g, b, a)" from getComputedStyle → NSColor.
+func parseCSSColor(_ css: String) -> NSColor? {
+    let parts = css.split(whereSeparator: { !"0123456789.".contains($0) }).compactMap { Double($0) }
+    guard parts.count >= 3 else { return nil }
+    return NSColor(srgbRed: parts[0] / 255, green: parts[1] / 255, blue: parts[2] / 255,
+                   alpha: parts.count >= 4 ? parts[3] : 1)
+}
 
 /// True for the local server's own origin; anything else is an external link.
 func isAppOrigin(_ url: URL) -> Bool {
@@ -15,7 +36,7 @@ func isAppOrigin(_ url: URL) -> Bool {
     return (host == "127.0.0.1" || host == "localhost") && url.port == PORT
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     var window: NSWindow!
     var webView: WKWebView!
     var serverProcess: Process?
@@ -133,15 +154,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         ))
+        config.userContentController.add(self, name: "shell")
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsBackForwardNavigationGestures = true
         webView.navigationDelegate = self
         webView.uiDelegate = self
+        webView.translatesAutoresizingMaskIntoConstraints = false
         self.webView = webView
 
-        // No title strip: the web content runs under a transparent title bar and keeps
-        // its top ~28 px free for the traffic lights. Drag and double-click-zoom come
-        // from the system title bar, which still sits above the web view.
+        // No title strip: a transparent title bar over full-size content, but the web view
+        // starts *below* the title bar. A WKWebView swallows every mouse event in its area,
+        // so if it ran under the bar the window could never be dragged from there. The
+        // traffic-light row is the real (empty) title bar, so the system handles drag and
+        // double-click-zoom; its colour is the window background, kept in step with the page.
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 860),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -152,8 +177,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
+        window.backgroundColor = NSColor(srgbRed: 0xf7 / 255, green: 0xf5 / 255, blue: 0xf0 / 255, alpha: 1)
         window.center()
-        window.contentView = webView
+        let container = NSView()
+        window.contentView = container
+        container.addSubview(webView)
+        let belowTitleBar = (window.contentLayoutGuide as? NSLayoutGuide)?.topAnchor ?? container.topAnchor
+        NSLayoutConstraint.activate([
+            webView.topAnchor.constraint(equalTo: belowTitleBar),
+            webView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            webView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
         window.setFrameAutosaveName("ClipMarkWindow")
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -163,6 +198,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private func loadApp() {
         guard !webView.isLoading, webView.url == nil else { return }
         webView.load(URLRequest(url: HOME_URL))
+    }
+
+    // MARK: - Page → shell messages
+
+    /// The page reports its background (Paper & rust or Ember) so the title-bar row matches.
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "shell",
+              let body = message.body as? [String: Any],
+              let css = body["background"] as? String,
+              let color = parseCSSColor(css), color.alphaComponent > 0 else { return }
+        window.backgroundColor = color
     }
 
     // MARK: - External links

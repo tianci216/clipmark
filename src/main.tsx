@@ -8,7 +8,6 @@ import "@fontsource/ibm-plex-mono/500.css";
 import { App } from "./App";
 import { applyCachedAppearance } from "./lib/appearance";
 import "./styles.css";
-import "./shell.css";
 
 applyCachedAppearance();
 
