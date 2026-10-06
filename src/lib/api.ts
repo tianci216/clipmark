@@ -1,3 +1,5 @@
+import type { Color, Font } from "./appearance";
+
 export interface Video {
   hash: string;
   file: string;
@@ -87,6 +89,8 @@ export interface Settings {
   lanIp: string | null;
   port: number;
   cookiesFromBrowser: CookiesFromBrowser;
+  font: Font;
+  color: Color;
   /** Installed yt-dlp, or null when not found. */
   ytDlp: { path: string; version: string } | null;
 }
@@ -96,6 +100,8 @@ export interface SettingsPatch {
   cookiesFromBrowser?: CookiesFromBrowser;
   mixxxDbPath?: string;
   musicBase?: string;
+  font?: Font;
+  color?: Color;
 }
 
 /** PUT /api/settings response: the saved settings plus how many video files the folder holds. */

@@ -110,6 +110,8 @@ describe("GET /api/settings", () => {
       lanIp: "192.168.1.23",
       port: 8899,
       cookiesFromBrowser: "chrome",
+      font: "public-sans",
+      color: "paper",
       ytDlp: null,
     });
   });
@@ -517,6 +519,36 @@ describe("cookies from browser", () => {
 
     await put("/api/settings", { cookiesFromBrowser: "none" });
     expect((await post("/api/downloads/test-cookies", {})).status).toBe(400);
+  });
+});
+
+describe("appearance: font and colour", () => {
+  it("defaults to Public Sans on paper, persists each change, and rejects unknown values", async () => {
+    await start();
+    const initial = (await get("/api/settings")).body;
+    expect(initial.font).toBe("public-sans");
+    expect(initial.color).toBe("paper");
+
+    const font = await put("/api/settings", { font: "sf-pro" });
+    expect(font.status).toBe(200);
+    expect(font.body.font).toBe("sf-pro");
+    expect(font.body.color).toBe("paper");
+
+    const color = await put("/api/settings", { color: "ember" });
+    expect(color.status).toBe(200);
+    expect(color.body.color).toBe("ember");
+
+    for (const bad of [{ font: "fraunces" }, { color: "neon" }, { font: 3 }, { color: null }]) {
+      const res = await put("/api/settings", bad);
+      expect(res.status, JSON.stringify(bad)).toBe(400);
+      expect(typeof res.body.error).toBe("string");
+    }
+    // A rejected key saves nothing, even alongside a valid one.
+    expect((await put("/api/settings", { font: "public-sans", color: "neon" })).status).toBe(400);
+
+    const after = (await get("/api/settings")).body;
+    expect(after.font).toBe("sf-pro");
+    expect(after.color).toBe("ember");
   });
 });
 
