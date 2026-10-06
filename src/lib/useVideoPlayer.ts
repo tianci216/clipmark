@@ -13,6 +13,8 @@ export interface VideoPlayer {
   seek: (t: number) => void;
   seekAndPlay: (t: number) => void;
   startLoop: (start: number, end: number) => void;
+  /** End the Loop; playback carries on from where it is. Nothing seeks. */
+  stopLoop: () => void;
   isLooping: (start: number, end: number) => boolean;
 }
 
@@ -109,6 +111,11 @@ export function useVideoPlayer(initialLoop: Loop | null): VideoPlayer {
     video.play();
   };
 
+  const stopLoop = () => {
+    loopRef.current = null;
+    setLoop(null);
+  };
+
   const isLooping = (start: number, end: number) =>
     !!loop && loop.start === start && loop.end === end;
 
@@ -120,6 +127,7 @@ export function useVideoPlayer(initialLoop: Loop | null): VideoPlayer {
     seek,
     seekAndPlay,
     startLoop,
+    stopLoop,
     isLooping,
   };
 }
