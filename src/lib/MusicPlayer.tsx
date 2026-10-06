@@ -39,11 +39,29 @@ function readProgress(audio: HTMLAudioElement): Progress {
   };
 }
 
+function Chevron({ dir }: { dir: "up" | "down" }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d={dir === "up" ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} />
+    </svg>
+  );
+}
+
 /**
  * The now-playing bar: buffered + played progress (click or drag to seek), the
- * track's title and artist, previous / play-pause / next, and the clock.
+ * track's title and artist, previous / play-pause / next, the clock and a hide
+ * chevron. Hidden, it is a slim handle: the progress line plus an unhide chevron.
+ * Hiding only changes the look; playback carries on.
  */
-export function MusicPlayer({ player }: { player: AudioPlayer }) {
+export function MusicPlayer({
+  player,
+  hidden,
+  onHidden,
+}: {
+  player: AudioPlayer;
+  hidden: boolean;
+  onHidden: (hidden: boolean) => void;
+}) {
   const { audio, display, paused, loadingId } = player;
   const [progress, setProgress] = useState<Progress>(EMPTY);
   const bar = useRef<HTMLDivElement>(null);
@@ -70,7 +88,7 @@ export function MusicPlayer({ player }: { player: AudioPlayer }) {
 
   const loading = loadingId !== null;
   return (
-    <div className="mx-player">
+    <div className={"mx-player" + (hidden ? " is-hidden" : "")}>
       <div
         className="mx-player__bar"
         ref={bar}
@@ -85,6 +103,17 @@ export function MusicPlayer({ player }: { player: AudioPlayer }) {
         <div className="mx-player__buffered" style={{ width: `${progress.buffered * 100}%` }} />
         <div className="mx-player__played" style={{ width: `${progress.played * 100}%` }} />
       </div>
+      {hidden && (
+        <button
+          type="button"
+          className="mx-player__show"
+          title={"Show player" + (display ? ` · ${display.title}` : "")}
+          aria-label="Show player"
+          onClick={() => onHidden(false)}
+        >
+          <Chevron dir="up" />
+        </button>
+      )}
       <div className="mx-player__body">
         <div className="mx-player__now">
           {display ? (
@@ -130,6 +159,15 @@ export function MusicPlayer({ player }: { player: AudioPlayer }) {
           {formatClock(progress.time)}
           {progress.duration > 0 && <span> / {formatClock(progress.duration)}</span>}
         </div>
+        <button
+          type="button"
+          className="mx-btn mx-player__hide"
+          title="Hide player (keeps playing)"
+          aria-label="Hide player"
+          onClick={() => onHidden(true)}
+        >
+          <Chevron dir="down" />
+        </button>
       </div>
     </div>
   );

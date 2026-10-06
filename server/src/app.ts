@@ -12,8 +12,14 @@ import {
 } from "./downloads.js";
 import { listSubfolders, listVideoFiles, realDeps, scanVideoDir, type ScanDeps } from "./scanner.js";
 import {
+  COLORS,
   deriveAddresses,
+  FONTS,
+  getAppearance,
   getCookiesFromBrowser,
+  isColor,
+  isFont,
+  setAppearance,
   getLibraryFolder,
   isCookiesFromBrowser,
   setCookiesFromBrowser,
@@ -124,6 +130,7 @@ export function createApp({
     ...deriveAddresses(networkInterfaces),
     port,
     cookiesFromBrowser: getCookiesFromBrowser(store),
+    ...getAppearance(store),
     ytDlp: await downloader.status(),
   });
 
@@ -154,12 +161,16 @@ export function createApp({
         cookiesFromBrowser?: unknown;
         mixxxDbPath?: unknown;
         musicBase?: unknown;
+        font?: unknown;
+        color?: unknown;
       };
       if (
         body.libraryFolder === undefined &&
         body.cookiesFromBrowser === undefined &&
         body.mixxxDbPath === undefined &&
-        body.musicBase === undefined
+        body.musicBase === undefined &&
+        body.font === undefined &&
+        body.color === undefined
       ) {
         res.status(400).json({ error: "Nothing to save." });
         return;
@@ -181,8 +192,20 @@ export function createApp({
         res.status(400).json({ error: "Cookies from browser must be none, chrome, safari or firefox." });
         return;
       }
+      if (body.font !== undefined && !isFont(body.font)) {
+        res.status(400).json({ error: `Font must be ${FONTS.join(" or ")}.` });
+        return;
+      }
+      if (body.color !== undefined && !isColor(body.color)) {
+        res.status(400).json({ error: `Color must be ${COLORS.join(" or ")}.` });
+        return;
+      }
       if (folderResult?.ok) setLibraryFolder(store, folderResult.folder);
       if (isCookiesFromBrowser(body.cookiesFromBrowser)) setCookiesFromBrowser(store, body.cookiesFromBrowser);
+      setAppearance(store, {
+        font: isFont(body.font) ? body.font : undefined,
+        color: isColor(body.color) ? body.color : undefined,
+      });
       setMusicConfig(store, {
         mixxxDbPath: dbResult?.ok ? dbResult.path : undefined,
         musicBase: baseResult?.ok ? baseResult.path : undefined,
