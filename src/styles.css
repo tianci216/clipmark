@@ -1,8 +1,9 @@
-/* ============ Clipmark — paper theme, Explorer layout (Variant B) ============
+/* ============ Clipmark — paper theme, feed frame ============
    Bone paper, black ink, one rust signal. Fraunces / Public Sans / IBM Plex Mono.
-   Desktop: sidebar tree + main pane. Phone (≤ 860px): Finder-style drill-down.
-   The shell is a fixed-height box; the sidebar tree and the main pane scroll internally.
-   A Clips / Music tab switch sits by the brand; the music player bar docks at the bottom. */
+   One top bar (Clips | Music, search, Download, Settings) over a double-width track
+   holding the Clips and Music pages side by side; switching tabs slides the track.
+   The shell is a fixed-height box; each page scrolls internally. The music player bar
+   docks at the bottom. Phone (≤ 860px): the same frame, one column. */
 
 :root {
   color-scheme: light;
@@ -54,113 +55,10 @@ input, select, textarea { font: inherit; color: inherit; }
   background: var(--cm-bg);
   color: var(--cm-ink);
 }
-.cm-cols {
-  display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
-  flex: 1;
-  min-height: 0;
-}
 
-/* ---------- sidebar ---------- */
-.cm-side {
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid var(--cm-line);
-  background: var(--cm-raised);
-  min-height: 0;
-}
-.cm-side__top {
-  padding: 16px 16px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  border-bottom: 1px solid var(--cm-line);
-  flex-shrink: 0;
-}
-.cm-brand {
-  font-family: var(--cm-display);
-  font-size: 22px;
-  font-weight: 500;
-  text-align: left;
-  align-self: flex-start;
-  white-space: nowrap;
-}
-.cm-brand span { color: var(--cm-accent); }
-.cm-side__brandrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-
-/* ---------- Clips / Music tabs ---------- */
-.cm-tabs {
-  display: inline-flex; flex-shrink: 0;
-  border: 1px solid var(--cm-line-strong); border-radius: 2px; overflow: hidden;
-}
-.cm-tabs__tab {
-  font-family: var(--cm-mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
-  padding: 6px 10px; color: var(--cm-soft); line-height: 1;
-}
-.cm-tabs__tab + .cm-tabs__tab { border-left: 1px solid var(--cm-line-strong); }
-.cm-tabs__tab:hover { color: var(--cm-accent); }
-.cm-tabs__tab.is-on { background: var(--cm-ink); color: var(--cm-bg); }
-button.cm-brand:hover { color: var(--cm-accent); }
-.cm-tree {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 8px 20px;
-  min-height: 0;
-}
-.cm-side__foot {
-  position: relative;
-  padding: 10px 16px;
-  border-top: 1px solid var(--cm-line);
-  display: flex;
-  justify-content: flex-end;
-  flex-shrink: 0;
-}
-.cm-folder { margin-bottom: 14px; }
-.cm-folder__name { padding: 8px 8px 4px; }
-.cm-node { border-left: 2px solid transparent; }
-.cm-node.is-sel { border-left-color: var(--cm-accent); background: var(--cm-bg); }
-.cm-node__video {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  padding: 6px 8px;
-  font-size: 13px;
-}
-.cm-node__video:hover { color: var(--cm-accent); }
-.cm-node.is-sel .cm-node__video { font-weight: 500; }
-.cm-node__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cm-node__n { font-size: 11px; color: var(--cm-muted); flex-shrink: 0; }
-.cm-node__clips { list-style: none; margin: 0; padding: 0 0 6px 18px; }
-.cm-node__clip {
-  display: grid;
-  grid-template-columns: 44px 1fr;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  padding: 4px 8px;
-  font-size: 12px;
-  color: var(--cm-soft);
-  border-radius: 2px;
-  position: relative;
-}
-.cm-node__clip::before {
-  content: "";
-  position: absolute;
-  left: -10px;
-  top: 50%;
-  width: 6px;
-  height: 1px;
-  background: var(--cm-line-strong);
-}
-.cm-node__clip > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cm-node__clip .cm-mono { color: var(--cm-muted); font-size: 11px; }
-.cm-node__clip:hover { color: var(--cm-accent); }
-.cm-node__clip.is-sel, .cm-node__clip.is-sel .cm-mono { color: var(--cm-accent); }
 .cm-none { padding: 20px 12px; color: var(--cm-muted); font-size: 12.5px; }
 
-/* ---------- main pane (index or player) ---------- */
+/* ---------- main pane (watch page, settings, music) ---------- */
 .cm-main { min-height: 0; display: flex; flex-direction: column; }
 .cm-main__scroll {
   flex: 1;
@@ -173,7 +71,6 @@ button.cm-brand:hover { color: var(--cm-accent); }
 }
 .cm-main__scroll > * { flex-shrink: 0; }
 .cm-h1 { font-family: var(--cm-display); font-size: 34px; font-weight: 400; margin: 0; }
-.cm-sec { display: flex; flex-direction: column; gap: 6px; }
 .cm-table { width: 100%; border-collapse: collapse; }
 .cm-table td {
   padding: 8px 10px;
@@ -183,11 +80,7 @@ button.cm-brand:hover { color: var(--cm-accent); }
 }
 .cm-table tr { cursor: pointer; }
 .cm-table tr:hover td { background: var(--cm-surface); }
-.cm-table__still { width: 72px; }
-.cm-table__still .cm-still { width: 64px; }
 .cm-table__name { font-family: var(--cm-display); font-size: 14.5px; }
-.cm-table__dur, .cm-table__n { color: var(--cm-muted); font-size: 11.5px; width: 60px; text-align: right; }
-.cm-table__strip { width: 40%; }
 .cm-table__note { color: var(--cm-soft); font-size: 12px; font-style: italic; }
 .cm-table__rm { text-align: right; width: 70px; }
 .cm-table__rm button { font-size: 11px; color: var(--cm-muted); }
@@ -202,42 +95,6 @@ button.cm-brand:hover { color: var(--cm-accent); }
 .cm-path i { font-style: normal; margin: 0 4px; }
 .cm-path b { color: var(--cm-ink); font-weight: 500; }
 .cm-clips { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
-
-/* footnote counts */
-.cm-foot {
-  font-size: 11px;
-  color: var(--cm-muted);
-  margin: 18px 0 0;
-  padding: 12px 14px 0;
-  border-top: 1px solid var(--cm-line);
-}
-.cm-main__scroll .cm-foot { padding: 12px 0 0; }
-
-/* ---------- still ---------- */
-.cm-still {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  aspect-ratio: 16 / 9;
-  background: #1c1a16;
-  overflow: hidden;
-  border-radius: 2px;
-}
-.cm-still__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.cm-still__missing {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  font-family: var(--cm-mono);
-  font-size: 8px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: rgba(247, 245, 240, 0.55);
-  text-align: center;
-}
-.cm-still__missing span { font-family: var(--cm-display); font-size: 16px; letter-spacing: 0; }
 
 /* ---------- strip (proportional clip track) ---------- */
 .cm-strip {
@@ -321,7 +178,7 @@ button.cm-brand:hover { color: var(--cm-accent); }
   background: var(--cm-accent); color: var(--cm-bg);
 }
 .cm-pop {
-  position: absolute; left: 16px; right: 16px; bottom: calc(100% + 8px); z-index: 30;
+  position: absolute; right: 0; top: calc(100% + 8px); width: 360px; z-index: 30;
   display: flex; flex-direction: column; gap: 8px; padding: 12px;
   background: var(--cm-surface); border: 1px solid var(--cm-line-strong);
   border-radius: 3px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
@@ -336,14 +193,7 @@ button.cm-brand:hover { color: var(--cm-accent); }
 .cm-settings__missing { font-size: 13px; color: var(--cm-accent); }
 .cm-settings__pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
 
-/* ---------- download rows (tree + phone list) ---------- */
-.cm-dl { padding: 8px 8px 8px 12px; border-left: 2px dashed var(--cm-line-strong); margin: 2px 0 2px 6px; display: flex; flex-direction: column; gap: 4px; }
-.cm-dl__head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-.cm-dl__name { font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cm-dl__act { font-size: 11px; color: var(--cm-soft); flex-shrink: 0; }
-.cm-dl__act:hover { color: var(--cm-accent); }
-.cm-dl__status { font-size: 11px; color: var(--cm-muted); }
-.cm-dl--failed .cm-dl__status { color: var(--cm-accent); }
+/* ---------- download card pieces ---------- */
 .cm-dl__bar { height: 3px; background: var(--cm-line); border-radius: 2px; overflow: hidden; }
 .cm-dl__fill { height: 100%; background: var(--cm-accent); transition: width 0.4s linear; }
 .cm-dl__hint { font-size: 11px; color: var(--cm-soft); }
@@ -351,7 +201,6 @@ button.cm-brand:hover { color: var(--cm-accent); }
   margin: 0; font-family: var(--cm-mono); font-size: 10.5px; color: var(--cm-accent);
   white-space: pre-wrap; word-break: break-word; max-height: 90px; overflow-y: auto;
 }
-.cm-list .cm-dl { margin: 0; padding: 12px 14px 12px 30px; border-left: 0; border-bottom: 1px solid var(--cm-line); }
 
 /* ---------- toast ---------- */
 .cm-toast {
@@ -453,7 +302,7 @@ button.cm-brand:hover { color: var(--cm-accent); }
 .cm-empty__glyph { font-size: 40px; color: var(--cm-muted); margin-bottom: 6px; }
 .cm-empty p { margin: 0; }
 
-/* ---------- phone drill-down ---------- */
+/* ---------- phone back header (watch page) ---------- */
 .cm-phead {
   position: relative; display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 10px 14px; border-bottom: 1px solid var(--cm-line); flex-shrink: 0; min-height: 48px;
@@ -462,31 +311,6 @@ button.cm-brand:hover { color: var(--cm-accent); }
   color: var(--cm-accent); font-size: 15px; padding: 4px 0; text-align: left;
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.cm-pfilter { padding: 10px 14px; border-bottom: 1px solid var(--cm-line); flex-shrink: 0; }
-.cm-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 60px; }
-.cm-crumb { padding: 12px 14px 4px; }
-.cm-list { list-style: none; margin: 0; padding: 0; }
-.cm-row {
-  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-  padding: 12px 14px; border-bottom: 1px solid var(--cm-line);
-}
-.cm-row__glyph { color: var(--cm-muted); }
-.cm-row__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.cm-row__name { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cm-row--folder .cm-row__name { font-family: var(--cm-display); font-size: 17px; }
-.cm-row__meta { font-size: 11px; color: var(--cm-muted); }
-.cm-row__still { width: 84px; height: 47px; flex-shrink: 0; }
-.cm-row--video { background: var(--cm-surface); }
-.cm-row--clip { padding: 10px 14px 10px 30px; gap: 10px; position: relative; }
-.cm-row--clip::before {
-  content: ""; position: absolute; left: 16px; top: 0; bottom: 0; width: 2px;
-  background: var(--cm-line-strong);
-}
-.cm-row--clip .cm-row__name { font-size: 14px; }
-.cm-row__t { font-size: 12px; color: var(--cm-accent); width: 44px; flex-shrink: 0; }
-.cm-sub { list-style: none; margin: 0; padding: 0; }
-.cm-list .cm-foot { margin: 0; }
-
 /* ---------- music tab (Mixxx library) ---------- */
 .mx-nav { padding: 0 0 12px; }
 .mx-nav__head { padding: 12px 8px 4px; }
@@ -607,8 +431,7 @@ button.cm-brand:hover { color: var(--cm-accent); }
   font-variant-numeric: tabular-nums;
 }
 
-/* phone drawer */
-.mx-phead__left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* crates and playlists drawer */
 .mx-menu { font-size: 20px; min-width: 36px; min-height: 36px; margin-left: -6px; color: var(--cm-ink); }
 .mx-overlay {
   position: fixed; inset: 0; z-index: 49; background: rgba(28, 26, 22, 0.35);
@@ -628,7 +451,6 @@ button.cm-brand:hover { color: var(--cm-accent); }
   .cm-main__scroll { padding: 14px 14px 70px; gap: 14px; }
   .cm-settings__field { flex-direction: column; }
   .cm-settings__addr-label { width: auto; }
-  .cm-pop { left: 14px; right: 14px; bottom: auto; top: calc(100% + 8px); }
   .cm-frame { max-width: 100%; }
   .cm-table td { padding: 8px 6px; }
   .cm-table__note { display: none; }
@@ -663,4 +485,163 @@ button.cm-brand:hover { color: var(--cm-accent); }
   .mx-btn { min-width: 48px; min-height: 48px; }
   .mx-btn--play svg { width: 36px; height: 36px; }
   .cm-toast.is-raised { bottom: 84px; }
+}
+
+/* ================= app frame: top bar, Clips | Music switch, sliding pages ================= */
+.cm-topbar {
+  position: relative; z-index: 20;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 640px) minmax(0, 1fr);
+  align-items: center; gap: 16px; padding: 10px 20px; flex-shrink: 0;
+}
+.cm-topbar__left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.cm-topbar__search { min-width: 0; min-height: 40px; } /* same height with or without a search */
+.cm-topbar__right { justify-self: end; display: flex; align-items: center; gap: 8px; position: relative; }
+
+/* the tag search: a rounded pill box */
+.cm-search { display: flex; align-items: stretch; min-width: 0; }
+.cm-search .cm-tf {
+  min-height: 40px; padding: 3px 8px 3px 14px; gap: 4px; flex-wrap: nowrap; overflow: visible;
+  border: 1px solid var(--cm-line); border-radius: 20px; background: var(--cm-surface);
+}
+.cm-search .cm-tf:focus-within { border-color: var(--cm-accent); }
+.cm-search .cm-tf__tok { flex-shrink: 0; }
+.cm-search .cm-tf__box input { border: 0; padding: 6px 4px; font-size: 14px; }
+.cm-search .cm-tf__sugg { left: -6px; right: -6px; top: calc(100% + 8px); border-radius: 0 0 10px 10px; }
+
+.cm-dlbtn {
+  display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 16px 0 12px; border-radius: 18px;
+  background: var(--cm-raised); border: 1px solid var(--cm-line); font-weight: 500; font-size: 13.5px; white-space: nowrap;
+}
+.cm-dlbtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.cm-dlbtn:hover, .cm-dlbtn.is-open { border-color: var(--cm-accent); color: var(--cm-accent); }
+.cm-iconbtn {
+  width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  color: var(--cm-soft); font-size: 16px;
+}
+.cm-iconbtn:hover, .cm-iconbtn.is-open { background: var(--cm-raised); color: var(--cm-accent); }
+.cm-pop__title { font-family: var(--cm-display); font-size: 16px; }
+
+/* Clips | Music: a rounded segmented pill; one thumb glides under the selected tab */
+.cm-tabs {
+  position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; align-items: center;
+  height: 36px; padding: 3px; flex-shrink: 0; border-radius: 18px; background: var(--cm-raised);
+}
+.cm-tabs__thumb {
+  position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); border-radius: 15px;
+  background: var(--cm-surface); box-shadow: 0 1px 2px rgba(28, 26, 22, 0.14), 0 0 0 1px var(--cm-line);
+  transition: transform 0.38s cubic-bezier(0.4, 0, 0.2, 1); pointer-events: none;
+}
+.cm-tabs[data-on="music"] .cm-tabs__thumb { transform: translateX(100%); }
+.cm-tabs__tab {
+  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 30px; padding: 0 14px 0 11px; border-radius: 15px;
+  font-size: 13.5px; font-weight: 500; line-height: 1; color: var(--cm-soft);
+  transition: background 0.15s, color 0.15s;
+}
+.cm-tabs__tab svg {
+  width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linejoin: round; stroke-linecap: round; transition: color 0.38s;
+}
+.cm-tabs__tab:hover { color: var(--cm-ink); background: rgba(28, 26, 22, 0.05); }
+.cm-tabs__tab.is-on { color: var(--cm-ink); background: transparent; }
+.cm-tabs__tab.is-on svg { color: var(--cm-accent); }
+.cm-tabs__tab:focus { outline: none; }
+.cm-tabs__tab:focus-visible { outline: 2px solid var(--cm-accent); outline-offset: 1px; }
+
+/* the two pages sit on a 200%-wide track. clip, not hidden: with hidden, focusing a
+   field or scrollIntoView on the off-screen page scrolls the track sideways. */
+.cm-slider { position: relative; flex: 1; min-height: 0; overflow: hidden; overflow: clip; }
+.cm-slider__track { display: flex; width: 200%; height: 100%; transition: transform 0.38s cubic-bezier(0.4, 0, 0.2, 1); }
+.cm-slider__track.is-music { transform: translateX(-50%); }
+.cm-slide { width: 50%; height: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.cm-slide > .cm-main { flex: 1; }
+/* Settings covers both pages, under the same top bar */
+.cm-layer { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; background: var(--cm-bg); }
+.cm-layer > .cm-main { flex: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .cm-tabs__thumb, .cm-slider__track { transition: none; }
+}
+
+/* ================= library feed: card grid ================= */
+.cm-feed__scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.cm-feed__empty { padding: 80px 20px; text-align: center; color: var(--cm-muted); }
+.cm-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 34px 16px; padding: 8px 20px 80px;
+}
+.cm-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.cm-card__thumb {
+  position: relative; display: block; width: 100%; aspect-ratio: 16 / 9;
+  border-radius: 10px; overflow: hidden; background: #1c1a16;
+}
+.cm-card__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cm-card__nothumb {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-family: var(--cm-display); font-size: 28px; color: rgba(247, 245, 240, 0.4);
+}
+.cm-card__dur {
+  position: absolute; right: 7px; bottom: 11px; background: rgba(28, 26, 22, 0.82); color: #f7f5f0;
+  font: 500 11.5px var(--cm-mono); padding: 2px 5px; border-radius: 4px;
+}
+.cm-card__badge {
+  position: absolute; left: 8px; top: 8px; background: rgba(28, 26, 22, 0.82); color: #f7f5f0;
+  font-family: var(--cm-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 3px 6px; border-radius: 4px;
+}
+/* the Clip marks sit where YouTube draws its watched bar */
+.cm-card__strip { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(28, 26, 22, 0.5); }
+.cm-card__strip i { position: absolute; top: 0; bottom: 0; min-width: 3px; background: var(--cm-accent); }
+.cm-card__strip i.is-dim { background: rgba(247, 245, 240, 0.5); }
+.cm-card__body { min-width: 0; display: flex; flex-direction: column; }
+.cm-card__title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-align: left;
+  font-family: var(--cm-display); font-size: 16px; font-weight: 500; line-height: 1.3; margin-bottom: 4px;
+  word-break: break-word;
+}
+button.cm-card__title:hover, .cm-card:not(.cm-card--dl):hover .cm-card__title { color: var(--cm-accent); }
+.cm-card__meta { font-size: 12.5px; color: var(--cm-muted); line-height: 1.55; }
+.cm-card__meta b { font-weight: 500; color: var(--cm-accent); }
+.cm-card__matches { list-style: none; margin: 6px 0 0; padding: 6px 0 0; border-top: 1px solid var(--cm-line); }
+.cm-card__matches button {
+  display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 8px; width: 100%; text-align: left;
+  padding: 3px 0; font-size: 12.5px; color: var(--cm-soft);
+}
+.cm-card__matches button > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-card__matches .cm-mono { color: var(--cm-accent); font-size: 11.5px; }
+.cm-card__matches button:hover { color: var(--cm-accent); }
+/* a Video whose file went missing: dimmed, still opens to the missing-file frame */
+.cm-card.is-missing .cm-card__thumb { opacity: 0.55; }
+.cm-card.is-missing .cm-card__title { color: var(--cm-soft); }
+
+/* a Download at the start of the grid */
+.cm-card--dl .cm-card__thumb {
+  background: var(--cm-raised); border: 1.5px dashed var(--cm-line-strong);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+}
+.cm-card--dl .cm-dl__bar { width: 60%; }
+.cm-card__state {
+  font-family: var(--cm-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cm-soft);
+}
+.cm-card--dl.is-failed .cm-card__thumb { border-color: var(--cm-accent); }
+.cm-card--dl.is-failed .cm-card__state { color: var(--cm-accent); }
+.cm-card--dl.is-scanning .cm-card__state, .cm-card--dl.is-cancelling .cm-card__state { animation: mx-pulse 1.2s ease-in-out infinite; }
+.cm-card__x {
+  position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--cm-soft);
+}
+.cm-card__x:hover { background: var(--cm-line); color: var(--cm-accent); }
+.cm-card--dl .cm-dl__err { margin-top: 6px; }
+.cm-card__dismiss { align-self: flex-start; margin-top: 8px; }
+
+@media (max-width: 860px) {
+  .cm-topbar { grid-template-columns: minmax(0, 1fr) auto; padding: 10px 14px 8px; gap: 10px; }
+  .cm-topbar__search { grid-column: 1 / -1; order: 3; }
+  .cm-topbar__search:empty { display: none; }
+  .cm-search .cm-tf__box input { font-size: 16px; } /* 16px stops iOS zooming on focus */
+  .cm-dlbtn { padding: 0 12px 0 9px; }
+  .cm-pop { width: calc(100vw - 28px); }
+  .cm-grid { grid-template-columns: 1fr; gap: 24px; padding: 4px 0 70px; }
+  .cm-card__thumb { border-radius: 0; }
+  .cm-card--dl .cm-card__thumb { border-left: 0; border-right: 0; }
+  .cm-card__body { padding: 0 14px; }
 }
