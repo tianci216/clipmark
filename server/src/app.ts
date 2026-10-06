@@ -50,6 +50,9 @@ import { QuerySqlError } from "./musicQuery.js";
 import { mimeForFile, parseRange, resolveVideoPath } from "./videoStream.js";
 import { createYtDlpDownloader } from "./ytdlp.js";
 
+/** Every key PUT /api/settings accepts; a body with none of them saves nothing. */
+const SETTINGS_KEYS = ["libraryFolder", "cookiesFromBrowser", "mixxxDbPath", "musicBase", "font", "color"] as const;
+
 function findDistDir(): string | null {
   const found = walkUp(import.meta.dirname, "dist/index.html");
   return found ? path.join(found, "dist") : null;
@@ -161,22 +164,8 @@ export function createApp({
   app.put(
     "/api/settings",
     asyncHandler(async (req, res) => {
-      const body = (req.body ?? {}) as {
-        libraryFolder?: unknown;
-        cookiesFromBrowser?: unknown;
-        mixxxDbPath?: unknown;
-        musicBase?: unknown;
-        font?: unknown;
-        color?: unknown;
-      };
-      if (
-        body.libraryFolder === undefined &&
-        body.cookiesFromBrowser === undefined &&
-        body.mixxxDbPath === undefined &&
-        body.musicBase === undefined &&
-        body.font === undefined &&
-        body.color === undefined
-      ) {
+      const body = (req.body ?? {}) as Partial<Record<(typeof SETTINGS_KEYS)[number], unknown>>;
+      if (SETTINGS_KEYS.every((key) => body[key] === undefined)) {
         res.status(400).json({ error: "Nothing to save." });
         return;
       }
@@ -496,7 +485,13 @@ export function createApp({
       return;
     }
     try {
-      res.json(visibleClip(folder, store.updateClip(id, input) as Clip));
+      const updated = store.updateClip(id, input);
+      if (!updated) {
+        // Deleted between the check above and the update.
+        res.status(404).json({ error: "No such clip." });
+        return;
+      }
+      res.json(visibleClip(folder, updated));
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
     }

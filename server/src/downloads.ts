@@ -165,11 +165,8 @@ export class DownloadQueue {
   private readonly entries: Entry[] = [];
   private nextId = 1;
   private running: Entry | null = null;
-  private readonly downloader: Downloader;
 
-  constructor(private readonly options: DownloadQueueOptions) {
-    this.downloader = options.downloader;
-  }
+  constructor(private readonly options: DownloadQueueOptions) {}
 
   list(): Download[] {
     return this.entries.map((e) => ({ ...e.download }));
@@ -242,7 +239,7 @@ export class DownloadQueue {
     next.download.state = "running";
     next.download.startedAt = Date.now();
     next.preexistingPartials = listPartials(next.destination);
-    next.handle = this.downloader.start(next.request, {
+    next.handle = this.options.downloader.start(next.request, {
       onProgress: (percent) => {
         if (next.download.state === "running") {
           next.download.progress = Math.max(0, Math.min(100, percent));
@@ -279,7 +276,8 @@ export class DownloadQueue {
 
   /**
    * Keys the Source by the landed file's Hash (ADR-0009) so it exists before the next scan.
-   * A Source that can't be parsed, or a file that can't be hashed, never fails the Download.
+   * A Source that can't be parsed, or a file that can't be hashed, never fails the Download;
+   * a preview that can't be claimed only leaves the Source without one.
    */
   private saveSource(entry: Entry, filepath: string, raw: string | null): void {
     const parsed = parseSourceJson(raw);
@@ -289,7 +287,12 @@ export class DownloadQueue {
     }
     try {
       const hash = this.options.hash(filepath);
-      const preview = this.claimPreview(entry, hash);
+      let preview: string | null = null;
+      try {
+        preview = this.claimPreview(entry, hash);
+      } catch (err) {
+        console.error(`Could not keep the preview for ${filepath}:`, err);
+      }
       this.options.saveSource(hash, { ...parsed.source, preview });
     } catch (err) {
       console.error(`Could not save the Source for ${filepath}:`, err);

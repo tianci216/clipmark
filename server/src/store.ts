@@ -237,27 +237,14 @@ export class Store {
   }
 
   createClip(videoHash: string, input: ClipInput): Clip {
-    const { startSeconds, endSeconds, note, tags, dancers = [] } = input;
-    if (!(endSeconds > startSeconds)) {
-      throw new Error("end_seconds must be greater than start_seconds");
-    }
-    const insertClip = this.db.prepare(
-      "INSERT INTO clips (video_hash, start_seconds, end_seconds, note) VALUES (?, ?, ?, ?)",
+    const id = this.writeClip(input, () =>
+      Number(
+        this.db
+          .prepare("INSERT INTO clips (video_hash, start_seconds, end_seconds, note) VALUES (?, ?, ?, ?)")
+          .run(videoHash, input.startSeconds, input.endSeconds, input.note).lastInsertRowid,
+      ),
     );
-    const insertTag = this.db.prepare(
-      "INSERT INTO clip_tags (clip_id, tag) VALUES (?, ?)",
-    );
-    const insertDancer = this.db.prepare(
-      "INSERT INTO clip_dancers (clip_id, name) VALUES (?, ?)",
-    );
-    const insert = this.db.transaction(() => {
-      const info = insertClip.run(videoHash, startSeconds, endSeconds, note);
-      const id = Number(info.lastInsertRowid);
-      for (const name of normalizeDancers(dancers)) insertDancer.run(id, name);
-      for (const tag of normalizeTags(tags)) insertTag.run(id, tag);
-      return id;
-    });
-    return this.getClip(insert()) as Clip;
+    return this.getClip(id as number) as Clip;
   }
 
   /**
@@ -265,24 +252,37 @@ export class Store {
    * normalisation and end > start rule as createClip. Undefined for an unknown id.
    */
   updateClip(id: number, input: ClipInput): Clip | undefined {
-    const { startSeconds, endSeconds, note, tags, dancers = [] } = input;
+    const written = this.writeClip(input, () => {
+      const changed = this.db
+        .prepare("UPDATE clips SET start_seconds = ?, end_seconds = ?, note = ? WHERE id = ?")
+        .run(input.startSeconds, input.endSeconds, input.note, id).changes;
+      if (changed === 0) return null;
+      this.db.prepare("DELETE FROM clip_dancers WHERE clip_id = ?").run(id);
+      this.db.prepare("DELETE FROM clip_tags WHERE clip_id = ?").run(id);
+      return id;
+    });
+    return written === null ? undefined : this.getClip(id);
+  }
+
+  /**
+   * What createClip and updateClip share: the end > start rule, then in one transaction the
+   * Clip's row (`writeRow` gives its id, or null when there is no such Clip) and its normalised
+   * Dancers and Tags.
+   */
+  private writeClip(input: ClipInput, writeRow: () => number | null): number | null {
+    const { startSeconds, endSeconds, tags, dancers = [] } = input;
     if (!(endSeconds > startSeconds)) {
       throw new Error("end_seconds must be greater than start_seconds");
     }
-    const update = this.db.transaction(() => {
-      const changed = this.db
-        .prepare("UPDATE clips SET start_seconds = ?, end_seconds = ?, note = ? WHERE id = ?")
-        .run(startSeconds, endSeconds, note, id).changes;
-      if (changed === 0) return false;
-      this.db.prepare("DELETE FROM clip_dancers WHERE clip_id = ?").run(id);
-      this.db.prepare("DELETE FROM clip_tags WHERE clip_id = ?").run(id);
+    return this.db.transaction(() => {
+      const id = writeRow();
+      if (id === null) return null;
       const insertDancer = this.db.prepare("INSERT INTO clip_dancers (clip_id, name) VALUES (?, ?)");
       const insertTag = this.db.prepare("INSERT INTO clip_tags (clip_id, tag) VALUES (?, ?)");
       for (const name of normalizeDancers(dancers)) insertDancer.run(id, name);
       for (const tag of normalizeTags(tags)) insertTag.run(id, tag);
-      return true;
-    });
-    return update() ? this.getClip(id) : undefined;
+      return id;
+    })();
   }
 
   deleteClip(id: number): boolean {
@@ -298,7 +298,7 @@ export class Store {
       )
       .get(id) as ClipRow | undefined;
     if (!row) return undefined;
-    return this.withLists([row])[0];
+    return this.attachDancersAndTags([row])[0];
   }
 
   getClips(): Clip[] {
@@ -309,7 +309,7 @@ export class Store {
          ORDER BY c.id`,
       )
       .all() as ClipRow[];
-    return this.withLists(rows);
+    return this.attachDancersAndTags(rows);
   }
 
   getClipsByVideo(videoHash: string): Clip[] {
@@ -321,7 +321,7 @@ export class Store {
          ORDER BY c.start_seconds, c.id`,
       )
       .all(videoHash) as ClipRow[];
-    return this.withLists(rows);
+    return this.attachDancersAndTags(rows);
   }
 
   getVideo(hash: string): Video | undefined {
@@ -428,15 +428,15 @@ export class Store {
     return rows.map((r) => r.name);
   }
 
-  private withLists(rows: ClipRow[]): Clip[] {
+  private attachDancersAndTags(rows: ClipRow[]): Clip[] {
     const ids = rows.map((r) => r.id);
-    const tags = this.loadList("clip_tags", "tag", ids);
-    const dancers = this.loadList("clip_dancers", "name", ids);
+    const tags = this.dancersOrTagsByClip("clip_tags", "tag", ids);
+    const dancers = this.dancersOrTagsByClip("clip_dancers", "name", ids);
     return rows.map((r) => toClip(r, dancers.get(r.id) ?? [], tags.get(r.id) ?? []));
   }
 
   /** One (clip_id, value) relation's values per Clip, in insertion order. */
-  private loadList(table: "clip_tags" | "clip_dancers", column: "tag" | "name", clipIds: number[]): Map<number, string[]> {
+  private dancersOrTagsByClip(table: "clip_tags" | "clip_dancers", column: "tag" | "name", clipIds: number[]): Map<number, string[]> {
     const result = new Map<number, string[]>();
     if (clipIds.length === 0) return result;
     const placeholders = clipIds.map(() => "?").join(",");

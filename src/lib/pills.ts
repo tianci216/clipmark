@@ -31,8 +31,8 @@ export interface PillKind {
 
 export interface PillConfig<K extends string = string> {
   kinds: Record<K, PillKind>;
-  /** The kind that typed (not picked) text commits as, fixed or decided from the text. */
-  freeKind: K | ((text: string) => K);
+  /** The kind that typed (not picked) text commits as. */
+  freeKind: K;
   /** Suggestions shown at most; 8 by default. */
   limit?: number;
 }
@@ -51,20 +51,23 @@ export function dancerField(index: Term[]): PillConfig<"dancer"> {
 
 /**
  * The top-bar search: Dancer, Tag and folder pills, suggested together and labelled by kind.
- * Typed text becomes a Dancer pill when it is part of a known Dancer's name, otherwise a Tag
- * pill; a folder pill only comes from a suggestion (or a card's folder name).
+ * Typed text that is not a picked suggestion becomes a free text pill (matching Dancers or
+ * Tags): the app never guesses its kind. Dancer, Tag and folder pills only come from a pick
+ * (or a chip, or a card's folder name).
  */
-export function searchField(dancers: Term[], tags: Term[], folders: Term[]): PillConfig<"dancer" | "tag" | "folder"> {
+export function searchField(
+  dancers: Term[],
+  tags: Term[],
+  folders: Term[],
+): PillConfig<"dancer" | "tag" | "folder" | "text"> {
   return {
     kinds: {
       dancer: { label: "dancer", index: dancers, normalize: normalizeDancer },
       tag: { label: "tag", index: tags, normalize: normalizeTag },
       folder: { label: "folder", index: folders, normalize: (raw) => raw.trim() },
+      text: { label: "text", index: [], normalize: normalizeDancer },
     },
-    freeKind: (text) => {
-      const q = fold(text.trim());
-      return dancers.some((d) => fold(d.text).includes(q)) ? "dancer" : "tag";
-    },
+    freeKind: "text",
   };
 }
 
@@ -157,12 +160,9 @@ function addPill<K extends string>(config: PillConfig<K>, pills: Pill<K>[], kind
   return [...pills, { kind, text }];
 }
 
-const freeKindOf = <K extends string>(config: PillConfig<K>, text: string): K =>
-  typeof config.freeKind === "function" ? config.freeKind(text) : config.freeKind;
-
 /** Text left in the field becomes a pill: what Save does before it reads the pills. */
 export function commitDraft<K extends string>(config: PillConfig<K>, pills: Pill<K>[], draft: string): Pill<K>[] {
-  return addPill(config, pills, freeKindOf(config, draft), draft);
+  return addPill(config, pills, config.freeKind, draft);
 }
 
 /** The suggestions for a state's text, whether or not the list is open (arrows reopen it). */
