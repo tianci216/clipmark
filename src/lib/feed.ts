@@ -1,7 +1,31 @@
 import type { Clip, Download, Video } from "./api";
 import { dirname, folderLabel, formatUploadDate } from "./format";
+import type { Pill } from "./pills";
 import { orphanVideoFor } from "./rail";
-import { matchesTokens } from "./tags";
+
+/** What the top-bar search filters by. A folder kind joins these with the chips. */
+export type SearchKind = "dancer" | "tag";
+export type SearchPill = Pill<SearchKind>;
+
+const contains = (values: string[], text: string) => {
+  const q = text.trim().toLowerCase();
+  return values.some((v) => v.toLowerCase().includes(q));
+};
+
+/** A Dancer pill looks only at Dancers and a Tag pill only at Tags, by case-insensitive substring. */
+export function pillMatches(pill: SearchPill, clip: Clip): boolean {
+  switch (pill.kind) {
+    case "dancer":
+      return contains(clip.dancers, pill.text);
+    case "tag":
+      return contains(clip.tags, pill.text);
+  }
+}
+
+/** A Clip matches the search when every pill matches it. */
+export function matchesPills(pills: SearchPill[], clip: Clip): boolean {
+  return pills.every((p) => pillMatches(p, clip));
+}
 
 /** How many matching Clips a filtered card lists under its title. */
 export const FIRST_MATCHES = 3;
@@ -90,7 +114,7 @@ function newestFirst(a: Video, b: Video): number {
  * is active), then one card per Video, newest file first, plus a missing-file card for each
  * Hash that has Clips but no file on disk. A filter keeps only Videos with a matching Clip.
  */
-export function buildFeed(videos: Video[], clips: Clip[], tokens: string[], downloads: Download[]): Feed {
+export function buildFeed(videos: Video[], clips: Clip[], pills: SearchPill[], downloads: Download[]): Feed {
   const clipsByHash = new Map<string, Clip[]>();
   for (const clip of clips) {
     const list = clipsByHash.get(clip.videoHash) ?? [];
@@ -109,11 +133,11 @@ export function buildFeed(videos: Video[], clips: Clip[], tokens: string[], down
     ...[...orphans.values()].map((video) => ({ video, missing: true })),
   ].sort((a, b) => newestFirst(a.video, b.video));
 
-  const filtering = tokens.length > 0;
+  const filtering = pills.length > 0;
   const cards: FeedCard[] = filtering ? [] : downloads.map(downloadCard);
   for (const { video, missing } of rows) {
     const own = (clipsByHash.get(video.hash) ?? []).slice().sort(byStart);
-    const matches = filtering ? own.filter((c) => matchesTokens(tokens, c.tags)) : own;
+    const matches = filtering ? own.filter((c) => matchesPills(pills, c)) : own;
     if (filtering && matches.length === 0) continue;
     cards.push({
       kind: "video",

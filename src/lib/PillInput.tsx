@@ -1,12 +1,13 @@
 import { useRef, useState, type ReactNode } from "react";
 import type { Pill, PillConfig, PillEvent } from "./pills";
 import { pillStep, suggestionsFor } from "./pills";
+import { dancerLabel } from "./format";
 
 /** Autocorrect and autocapitalise off, spellcheck on: for every field holding names or moves. */
 export const plainText = { autoCorrect: "off", autoCapitalize: "off", spellCheck: true } as const;
 
 /**
- * The shared pill input: create form Tags (and Dancers next), and the top-bar search.
+ * The shared pill input: create form Dancers and Tags, and the top-bar search.
  * All behaviour lives in pills.ts `pillStep`; this only renders it and feeds it events.
  *
  * `pills` is controlled. `draft` (the typed text) may be controlled too, so a form can keep it
@@ -130,6 +131,20 @@ function highlight(text: string, q: string): ReactNode {
       <b>{text.slice(i, i + q.length)}</b>
       {text.slice(i + q.length)}
     </>
+  );
+}
+
+/**
+ * A saved Clip's name: its Dancers in plain text ("A & B"), then its lowercase Tag pills;
+ * "untitled" with neither.
+ */
+export function ClipName({ clip }: { clip: { dancers: string[]; tags: string[] } }) {
+  if (!clip.dancers.length && !clip.tags.length) return <span className="cm-crow__none">untitled</span>;
+  return (
+    <span className="cm-clipname">
+      {clip.dancers.length > 0 && <span className="cm-clipname__d">{dancerLabel(clip.dancers)}</span>}
+      <TagPills tags={clip.tags} />
+    </span>
   );
 }
 

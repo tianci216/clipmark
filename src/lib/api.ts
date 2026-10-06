@@ -33,6 +33,7 @@ export interface Clip {
   startSeconds: number;
   endSeconds: number;
   note: string;
+  dancers: string[];
   tags: string[];
 }
 
@@ -50,6 +51,7 @@ export interface ClipInput {
   startSeconds: number;
   endSeconds: number;
   note: string;
+  dancers: string[];
   tags: string[];
 }
 

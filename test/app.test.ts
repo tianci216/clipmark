@@ -376,6 +376,49 @@ describe("Tags on a Clip", () => {
   });
 });
 
+describe("Dancers on a Clip", () => {
+  async function createWithDancers(dancers: unknown) {
+    await start({ env: { CLIPMARK_VIDEO_DIR: folder("A", { "alpha.mp4": "alpha bytes" }) } });
+    const [alpha] = (await get("/api/tree")).body.videos;
+    return post("/api/clips", { videoHash: alpha.hash, startSeconds: 1, endSeconds: 2, note: "", tags: ["swing out"], dancers });
+  }
+
+  it("keep their capitalisation, trimmed and whitespace-collapsed, in the Clip and /api/clips responses", async () => {
+    const created = await createWithDancers([" Dax  Hock ", "Sarah\tBreck", "deVries"]);
+    expect(created.status).toBe(201);
+    expect(created.body.dancers).toEqual(["Dax Hock", "Sarah Breck", "deVries"]);
+    expect(created.body.tags).toEqual(["swing out"]);
+    expect((await get("/api/clips")).body[0].dancers).toEqual(["Dax Hock", "Sarah Breck", "deVries"]);
+  });
+
+  it("dedupe case-insensitively keeping the first spelling given, and drop empties", async () => {
+    const created = await createWithDancers(["Dax Hock", "dax hock", "DAX  HOCK", "", "  ", "Naomi Uyama"]);
+    expect(created.body.dancers).toEqual(["Dax Hock", "Naomi Uyama"]);
+  });
+
+  it("default to none when left out or not a list of strings", async () => {
+    const created = await createWithDancers(undefined);
+    expect(created.status).toBe(201);
+    expect(created.body.dancers).toEqual([]);
+    const mixed = await post("/api/clips", {
+      videoHash: (await get("/api/tree")).body.videos[0].hash,
+      startSeconds: 3,
+      endSeconds: 4,
+      note: "",
+      tags: [],
+      dancers: [7, "Frida Segerdahl", null],
+    });
+    expect(mixed.body.dancers).toEqual(["Frida Segerdahl"]);
+  });
+
+  it("go away with their Clip", async () => {
+    const created = await createWithDancers(["Dax Hock"]);
+    expect((await request("DELETE", `/api/clips/${created.body.id}`)).status).toBe(204);
+    expect((await get("/api/clips")).body).toEqual([]);
+    expect(store.getDancers()).toEqual([]);
+  });
+});
+
 describe("POST /api/downloads", () => {
   it("queues a job for a subfolder and reports it with progress, then the landed file", async () => {
     const lib = folder("lib", { "Classes/old.mp4": "old" });
