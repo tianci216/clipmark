@@ -68,42 +68,12 @@ export async function fetchClips(): Promise<Clip[]> {
 }
 
 export async function createClip(videoHash: string, input: ClipInput): Promise<Clip> {
-  const res = await fetch("/api/clips", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ videoHash, ...input }),
-  });
-  if (!res.ok) {
-    let message = `POST /api/clips failed: ${res.status}`;
-    try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) message = body.error;
-    } catch {
-      // keep the status message
-    }
-    throw new Error(message);
-  }
-  return (await res.json()) as Clip;
+  return send<Clip>("POST", "/api/clips", { videoHash, ...input });
 }
 
 /** Replaces a Clip's IN, OUT, Note, Dancers and Tags in full (ADR-0008). */
 export async function updateClip(id: number, input: ClipInput): Promise<Clip> {
-  const res = await fetch(`/api/clips/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!res.ok) {
-    let message = `PUT /api/clips/${id} failed: ${res.status}`;
-    try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) message = body.error;
-    } catch {
-      // keep the status message
-    }
-    throw new Error(message);
-  }
-  return (await res.json()) as Clip;
+  return send<Clip>("PUT", `/api/clips/${id}`, input);
 }
 
 export async function deleteClip(id: number): Promise<void> {

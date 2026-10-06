@@ -237,10 +237,16 @@ describe("searchField", () => {
     expect(config.kinds.folder.label).toBe("folder");
   });
 
-  it("commits typed text as a Dancer when it is part of a known Dancer's name, else as a Tag, never a folder", () => {
-    expect(commitDraft(config, [], "Breck")).toEqual([{ kind: "dancer", text: "Breck" }]);
-    expect(commitDraft(config, [], "Swing")).toEqual([{ kind: "tag", text: "swing" }]);
-    expect(commitDraft(config, [], "Classes")).toEqual([{ kind: "tag", text: "classes" }]);
+  it("commits typed text as a free text pill, never guessing Dancer, Tag or folder", () => {
+    expect(commitDraft(config, [], "Breck")).toEqual([{ kind: "text", text: "Breck" }]);
+    expect(commitDraft(config, [], " Swing  out ")).toEqual([{ kind: "text", text: "Swing out" }]);
+    expect(commitDraft(config, [], "Classes")).toEqual([{ kind: "text", text: "Classes" }]);
+    expect(commitDraft(config, [{ kind: "text", text: "Breck" }], "breck")).toEqual([{ kind: "text", text: "Breck" }]);
+  });
+
+  it("keeps a picked suggestion's kind", () => {
+    const step = pillStep(config, { pills: [], draft: "breck", open: true, hi: 0 }, { type: "key", key: "Enter" });
+    expect(step.state.pills).toEqual([{ kind: "dancer", text: "Sarah Breck" }]);
   });
 
   it("keeps a picked folder's spelling", () => {

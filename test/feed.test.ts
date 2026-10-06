@@ -147,6 +147,14 @@ describe("buildFeed", () => {
       expect(matched(tagPills("breck"))).toEqual([]);
     });
 
+    it("matches a typed text pill against Dancers or Tags, by case-insensitive substring", () => {
+      const text = (t: string): SearchPill => ({ kind: "text", text: t });
+      expect(matched([text("DAX")])).toEqual([1, 2, 3]);
+      expect(matched([text("breck")])).toEqual([1]);
+      expect(matched([text("swing")])).toEqual([1, 4]);
+      expect(matched([text("dax"), text("swing")])).toEqual([1]);
+    });
+
     it("needs every pill to match, across both kinds", () => {
       expect(matched([dancer("dax"), ...tagPills("swing")])).toEqual([1]);
       expect(matched([dancer("sarah"), dancer("dax hock")])).toEqual([1]);

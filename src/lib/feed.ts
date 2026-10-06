@@ -3,8 +3,11 @@ import { dirname, folderLabel, formatUploadDate } from "./format";
 import { buildTermIndex, type Pill, type Suggestion, type Term } from "./pills";
 import { orphanVideoFor } from "./rail";
 
-/** What the top-bar search filters by: Dancers, Tags and the folder a Video sits in. */
-export type SearchKind = "dancer" | "tag" | "folder";
+/**
+ * What the top-bar search filters by: Dancers, Tags, the folder a Video sits in, and free text
+ * (typed without picking a suggestion), which looks at Dancers and Tags both.
+ */
+export type SearchKind = "dancer" | "tag" | "folder" | "text";
 export type SearchPill = Pill<SearchKind>;
 
 const contains = (values: string[], text: string) => {
@@ -16,7 +19,8 @@ const contains = (values: string[], text: string) => {
 export const videoFolder = (video: Video): string => folderLabel(dirname(video.file));
 
 /**
- * A Dancer pill looks only at Dancers and a Tag pill only at Tags, by case-insensitive substring.
+ * A Dancer pill looks only at Dancers, a Tag pill only at Tags, and a free text pill at either,
+ * all by case-insensitive substring.
  * A folder pill matches every Clip on a Video in exactly that folder (not its subfolders), going
  * by the card's own file: two files sharing a Hash can sit in different folders.
  */
@@ -26,6 +30,8 @@ export function pillMatches(pill: SearchPill, clip: Clip, video: Video): boolean
       return contains(clip.dancers, pill.text);
     case "tag":
       return contains(clip.tags, pill.text);
+    case "text":
+      return contains(clip.dancers, pill.text) || contains(clip.tags, pill.text);
     case "folder":
       return videoFolder(video).toLowerCase() === pill.text.trim().toLowerCase();
   }

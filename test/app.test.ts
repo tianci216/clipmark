@@ -795,6 +795,25 @@ describe("Video Source", () => {
     expect((await treeVideo("local.mp4"))?.thumbnail).toBe(`/thumbnails/${computeFileHash(path.join(lib, "local.mp4"))}.jpg`);
   });
 
+  it("a preview that can't be claimed drops only the preview, never the Source", async () => {
+    const lib = folder("lib");
+    const fake = fakeDownloader();
+    await start({ env: { CLIPMARK_VIDEO_DIR: lib }, downloader: fake.downloader });
+    await post("/api/downloads", { url: "https://youtu.be/abc123", folder: "" });
+    await settle();
+    // A non-empty directory squats on the preview's name, so renaming the preview onto it fails.
+    const probe = path.join(folder("probe"), "probe.mp4");
+    fs.writeFileSync(probe, "ilhc bytes");
+    const squat = path.join(root, "thumbs", `source-${computeFileHash(probe)}.jpg`);
+    fs.mkdirSync(squat, { recursive: true });
+    fs.writeFileSync(path.join(squat, "x"), "");
+    fake.finish(fake.runs[0], "ILHC [abc123].mp4", { bytes: "ilhc bytes", source: SOURCE_JSON, preview: "img" });
+
+    expect((await get("/api/downloads")).body[0]).toMatchObject({ state: "done", file: "ILHC [abc123].mp4" });
+    const video = await treeVideo("ILHC [abc123].mp4");
+    expect(video?.source).toEqual(expect.objectContaining({ ...ILHC_SOURCE, preview: null }));
+  });
+
   it("the Source survives renaming and moving the file inside the Library Folder", async () => {
     const lib = folder("lib", { "Classes/.keep": "" });
     const fake = fakeDownloader();
