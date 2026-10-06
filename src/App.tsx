@@ -27,8 +27,8 @@ import { SettingsPane } from "./lib/SettingsPane";
 import { Slide } from "./lib/Slide";
 import { readFlag, writeFlag } from "./lib/storedFlag";
 import { TabSwitch, type Tab } from "./lib/TabSwitch";
-import { TagFilter } from "./lib/TagFilter";
-import { buildTagIndex } from "./lib/tags";
+import { PillInput } from "./lib/PillInput";
+import { buildTermIndex, tagField, type Pill } from "./lib/pills";
 import { TopBar } from "./lib/TopBar";
 import { useAudioPlayer } from "./lib/useAudioPlayer";
 import { PHONE_QUERY, useMedia } from "./lib/useMedia";
@@ -238,7 +238,8 @@ export function App() {
     [folders, downloads, scanning, handleStartDownload, handleRemoveDownload],
   );
 
-  const tagIndex = useMemo(() => buildTagIndex(clips), [clips]);
+  const tagConfig = useMemo(() => tagField(buildTermIndex(clips.map((c) => c.tags))), [clips]);
+  const searchPills = useMemo(() => tokens.map((text): Pill<"tag"> => ({ kind: "tag", text })), [tokens]);
   const feed = useMemo(
     () => buildFeed(videos, clips, tokens, downloads),
     [videos, clips, tokens, downloads],
@@ -270,6 +271,7 @@ export function App() {
     setTokens(next);
     setTarget(null);
   }, []);
+  const changeSearchPills = useCallback((next: Pill<"tag">[]) => changeTokens(next.map((p) => p.text)), [changeTokens]);
 
   const handleSaved = useCallback(
     (saved: Settings) => {
@@ -379,7 +381,13 @@ export function App() {
             <MusicSearch library={music} />
           ) : (
             <div className="cm-search" role="search">
-              <TagFilter index={tagIndex} tokens={tokens} onTokens={changeTokens} compact />
+              <PillInput
+                config={tagConfig}
+                pills={searchPills}
+                onPills={changeSearchPills}
+                placeholder="Search tags"
+                ariaLabel="Search tags"
+              />
             </div>
           )
         }

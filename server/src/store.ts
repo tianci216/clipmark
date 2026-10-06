@@ -42,6 +42,20 @@ export interface ClipInput {
   tags: string[];
 }
 
+/**
+ * A Clip's Tags as stored (ADR-0008): trimmed, internal whitespace collapsed to one space,
+ * lowercased, empties and duplicates dropped, first occurrence's order kept. Punctuation is
+ * not folded, so "swing-out" and "swing out" stay two Tags.
+ */
+export function normalizeTags(raw: string[]): string[] {
+  const out: string[] = [];
+  for (const t of raw) {
+    const tag = t.trim().replace(/\s+/g, " ").toLowerCase();
+    if (tag !== "" && !out.includes(tag)) out.push(tag);
+  }
+  return out;
+}
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS videos (
   hash TEXT PRIMARY KEY,
@@ -207,13 +221,7 @@ export class Store {
     const insert = this.db.transaction(() => {
       const info = insertClip.run(videoHash, startSeconds, endSeconds, note);
       const id = Number(info.lastInsertRowid);
-      const seen = new Set<string>();
-      for (const raw of tags) {
-        const tag = raw.trim();
-        if (tag === "" || seen.has(tag)) continue;
-        seen.add(tag);
-        insertTag.run(id, tag);
-      }
+      for (const tag of normalizeTags(tags)) insertTag.run(id, tag);
       return id;
     });
     return this.getClip(insert()) as Clip;

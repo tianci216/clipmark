@@ -351,6 +351,31 @@ function fakeDownloader(status: { path: string; version: string } | null = { pat
 
 const settle = () => new Promise((r) => setTimeout(r, 5));
 
+describe("Tags on a Clip", () => {
+  async function createWithTags(tags: unknown[]) {
+    await start({ env: { CLIPMARK_VIDEO_DIR: folder("A", { "alpha.mp4": "alpha bytes" }) } });
+    const [alpha] = (await get("/api/tree")).body.videos;
+    return post("/api/clips", { videoHash: alpha.hash, startSeconds: 1, endSeconds: 2, note: "", tags });
+  }
+
+  it("are stored trimmed, whitespace-collapsed and lowercase", async () => {
+    const created = await createWithTags([" Swing  Out ", "Lindy\tHop", "KICK"]);
+    expect(created.status).toBe(201);
+    expect(created.body.tags).toEqual(["swing out", "lindy hop", "kick"]);
+    expect((await get("/api/clips")).body[0].tags).toEqual(["swing out", "lindy hop", "kick"]);
+  });
+
+  it("collapse duplicates that differ only in case or spacing, and drop empties", async () => {
+    const created = await createWithTags(["Swing Out", "swing out", "SWING  OUT", "", "   ", "tuck"]);
+    expect(created.body.tags).toEqual(["swing out", "tuck"]);
+  });
+
+  it("keep punctuation, so swing-out and swing out stay distinct", async () => {
+    const created = await createWithTags(["Swing-Out", "swing out"]);
+    expect(created.body.tags).toEqual(["swing-out", "swing out"]);
+  });
+});
+
 describe("POST /api/downloads", () => {
   it("queues a job for a subfolder and reports it with progress, then the landed file", async () => {
     const lib = folder("lib", { "Classes/old.mp4": "old" });

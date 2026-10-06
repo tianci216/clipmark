@@ -2,6 +2,9 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import type { Clip, ClipInput, Video } from "./api";
 import { videoUrl } from "./api";
 import { basename, dirname, displayName, folderLabel, formatTime, formatUploadDate, sourceHost } from "./format";
+import { PillInput, plainText, TagPills } from "./PillInput";
+import type { Pill, PillConfig } from "./pills";
+import { buildTermIndex, commitDraft, tagField } from "./pills";
 import { railFor } from "./rail";
 import { Strip, stripDuration } from "./Strip";
 import type { VideoPlayer } from "./useVideoPlayer";
@@ -69,6 +72,7 @@ export function PlayerPane({
   }, [active, looping, stopLoop, videoRef]);
 
   const { own, others } = useMemo(() => railFor(video, videos, clips), [video, videos, clips]);
+  const tagConfig = useMemo(() => tagField(buildTermIndex(clips.map((c) => c.tags))), [clips]);
   const duration = player.duration > 0 ? player.duration : stripDuration(video.durationSeconds, own);
 
   return (
@@ -117,7 +121,7 @@ export function PlayerPane({
         <aside className="cm-watch__side">
           <section className="cm-panel">
             <div className="cm-eyebrow">New clip</div>
-            <MarkDeck player={player} onSave={(input) => onSave(video, input)} />
+            <MarkDeck player={player} tagConfig={tagConfig} onSave={(input) => onSave(video, input)} />
           </section>
 
           <section>
@@ -155,7 +159,7 @@ export function PlayerPane({
                       title="Loop this clip"
                       onClick={() => player.startLoop(c.startSeconds, c.endSeconds)}
                     >
-                      {c.tags.join(" · ") || "untitled"}
+                      {c.tags.length ? <TagPills tags={c.tags} /> : <span className="cm-crow__none">untitled</span>}
                     </button>
                     {c.note && <div className="cm-crow__note">{c.note}</div>}
                   </div>
@@ -293,13 +297,16 @@ function WatchInfo({ video }: { video: Video }) {
 
 function MarkDeck({
   player,
+  tagConfig,
   onSave,
 }: {
   player: VideoPlayer;
+  tagConfig: PillConfig<"tag">;
   onSave: (input: ClipInput) => Promise<void>;
 }) {
   const [mark, setMark] = useState<{ s: number | null; e: number | null }>({ s: null, e: null });
-  const [tags, setTags] = useState("");
+  const [tags, setTags] = useState<Pill<"tag">[]>([]);
+  const [tagDraft, setTagDraft] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -313,6 +320,10 @@ function MarkDeck({
       setError("The clip has to end after it starts.");
       return;
     }
+    // Text still in the Tags field counts: it becomes a pill before saving.
+    const allTags = commitDraft(tagConfig, tags, tagDraft);
+    setTags(allTags);
+    setTagDraft("");
     setSaving(true);
     setError("");
     try {
@@ -320,10 +331,10 @@ function MarkDeck({
         startSeconds: mark.s,
         endSeconds: mark.e,
         note: note.trim(),
-        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+        tags: allTags.map((p) => p.text),
       });
       setMark({ s: null, e: null });
-      setTags("");
+      setTags([]);
       setNote("");
     } catch (err) {
       setError((err as Error).message);
@@ -355,12 +366,15 @@ function MarkDeck({
         <span className="cm-deck__live cm-mono">live {formatTime(player.currentTime)}</span>
       </div>
       <div className="cm-deck__fields">
-        <input
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-          placeholder="Tags, comma separated"
+        <PillInput
+          config={tagConfig}
+          pills={tags}
+          onPills={setTags}
+          draft={tagDraft}
+          onDraft={setTagDraft}
+          placeholder="Tags"
         />
-        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note" />
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note" {...plainText} />
         <button type="button" className="cm-save" onClick={() => void save()} disabled={saving}>
           {saving ? "Saving…" : "Save clip"}
         </button>
