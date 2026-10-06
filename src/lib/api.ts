@@ -86,6 +86,26 @@ export async function createClip(videoHash: string, input: ClipInput): Promise<C
   return (await res.json()) as Clip;
 }
 
+/** Replaces a Clip's IN, OUT, Note, Dancers and Tags in full (ADR-0008). */
+export async function updateClip(id: number, input: ClipInput): Promise<Clip> {
+  const res = await fetch(`/api/clips/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    let message = `PUT /api/clips/${id} failed: ${res.status}`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) message = body.error;
+    } catch {
+      // keep the status message
+    }
+    throw new Error(message);
+  }
+  return (await res.json()) as Clip;
+}
+
 export async function deleteClip(id: number): Promise<void> {
   const res = await fetch(`/api/clips/${id}`, { method: "DELETE" });
   if (!res.ok && res.status !== 204) {

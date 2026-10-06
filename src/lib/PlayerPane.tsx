@@ -1,10 +1,12 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { Clip, ClipInput, Video } from "./api";
 import { videoUrl } from "./api";
 import { basename, dirname, displayName, folderLabel, formatTime, formatUploadDate, sourceHost } from "./format";
+import type { Draft, TimeField } from "./clipEditor";
+import { activeDraft, draftInput, editorStep, initialEditor, loopAfterSave, markedTime, typedTime } from "./clipEditor";
 import { ClipName, PillInput, plainText } from "./PillInput";
-import type { Pill, PillConfig } from "./pills";
-import { buildTermIndex, commitDraft, dancerField, tagField } from "./pills";
+import type { PillConfig } from "./pills";
+import { buildTermIndex, dancerField, tagField } from "./pills";
 import { railFor } from "./rail";
 import { Strip, stripDuration } from "./Strip";
 import type { VideoPlayer } from "./useVideoPlayer";
@@ -13,9 +15,10 @@ import { fullscreenElement, isTypingTarget, toggleFullscreen, watchKeyAction } f
 
 /**
  * The watch page, two columns. Left: native video, clip strip (a Clip's bar Loops it), the
- * Loop hint and the video info. Right (about 420 px): the mark deck, "Clips on this video"
- * and "Same dancers or tags". Narrow widths stack them: video, strip, hint, deck, Clips,
- * related, info. Keys: Escape stops the Loop without seeking; F toggles native fullscreen.
+ * Loop hint and the video info. Right (about 420 px): the clip editor (New clip, or Edit clip
+ * for a row's Edit), "Clips on this video" and "Same dancers or tags". Narrow widths stack
+ * them: video, strip, hint, editor, Clips, related, info. Keys: Escape cancels an edit, else
+ * stops the Loop without seeking; F toggles native fullscreen.
  * Mount it with a key of file + loop clip so the loop state machine restarts per target.
  */
 export function PlayerPane({
@@ -25,6 +28,7 @@ export function PlayerPane({
   videos,
   clips,
   onSave,
+  onUpdate,
   onRemove,
   onOpen,
   active = true,
@@ -35,6 +39,7 @@ export function PlayerPane({
   videos: Video[];
   clips: Clip[];
   onSave: (video: Video, input: ClipInput) => Promise<void>;
+  onUpdate: (clip: Clip, input: ClipInput) => Promise<Clip>;
   onRemove: (clip: Clip) => Promise<void>;
   onOpen: (video: Video, clip: Clip | null) => void;
   /** False while the page is hidden (behind Music or Settings): the video pauses, keys are off. */
@@ -49,6 +54,16 @@ export function PlayerPane({
     if (!active) videoRef.current?.pause();
   }, [active, videoRef]);
 
+  const { own, related } = useMemo(() => railFor(video, videos, clips), [video, videos, clips]);
+  const [editor, dispatch] = useReducer(editorStep, undefined, initialEditor);
+  const editId = editor.mode.kind === "edit" ? editor.mode.clipId : null;
+  // A Clip that left this Video's list (removed elsewhere) ends its edit.
+  const editingClip = editId === null ? null : (own.find((c) => c.id === editId) ?? null);
+  const editing = editingClip !== null;
+  useEffect(() => {
+    if (editId !== null && !editing) dispatch({ type: "cancel" });
+  }, [editId, editing]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const action = watchKeyAction({
@@ -60,8 +75,10 @@ export function PlayerPane({
         active,
         fullscreen: fullscreenElement() !== null,
         looping,
+        editing,
       });
-      if (action === "stop-loop") stopLoop();
+      if (action === "cancel-edit") dispatch({ type: "cancel" });
+      else if (action === "stop-loop") stopLoop();
       else if (action === "fullscreen") {
         e.preventDefault();
         toggleFullscreen(videoRef.current);
@@ -69,9 +86,19 @@ export function PlayerPane({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, looping, stopLoop, videoRef]);
+  }, [active, looping, editing, stopLoop, videoRef]);
 
-  const { own, related } = useMemo(() => railFor(video, videos, clips), [video, videos, clips]);
+  // Opening an edit brings the panel into view, scrolling the watch page vertically only
+  // (scrollIntoView would also shift the sliding track sideways).
+  const panelRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = panelRef.current;
+    const sc = el?.closest(".cm-watch");
+    if (editId === null || !el || !sc) return;
+    const r = el.getBoundingClientRect();
+    const sr = sc.getBoundingClientRect();
+    if (r.top < sr.top || r.bottom > sr.bottom) sc.scrollBy({ top: r.top - sr.top - 12, behavior: "smooth" });
+  }, [editId]);
   const tagConfig = useMemo(() => tagField(buildTermIndex(clips.map((c) => c.tags))), [clips]);
   const dancerConfig = useMemo(() => dancerField(buildTermIndex(clips.map((c) => c.dancers))), [clips]);
   const duration = player.duration > 0 ? player.duration : stripDuration(video.durationSeconds, own);
@@ -120,15 +147,33 @@ export function PlayerPane({
         </div>
 
         <aside className="cm-watch__side">
-          <section className="cm-panel">
-            <div className="cm-eyebrow">New clip</div>
-            <MarkDeck
-              player={player}
-              dancerConfig={dancerConfig}
-              tagConfig={tagConfig}
-              onSave={(input) => onSave(video, input)}
-            />
-          </section>
+          <ClipEditor
+            key={editingClip ? `edit-${editingClip.id}` : "new"}
+            panelRef={panelRef}
+            clip={editingClip}
+            draft={editingClip ? activeDraft(editor) : editor.newDraft}
+            onChange={(patch) => dispatch({ type: "change", patch })}
+            player={player}
+            dancerConfig={dancerConfig}
+            tagConfig={tagConfig}
+            onSave={async (input) => {
+              if (!editingClip) {
+                await onSave(video, input);
+                dispatch({ type: "created" });
+                return;
+              }
+              const updated = await onUpdate(editingClip, input);
+              const loop = loopAfterSave(player.loop, editingClip, updated);
+              if (loop) player.startLoop(loop.start, loop.end);
+              dispatch({ type: "updated", clipId: editingClip.id });
+            }}
+            onCancel={() => dispatch({ type: "cancel" })}
+            onRemove={async () => {
+              if (!editingClip) return;
+              await onRemove(editingClip);
+              dispatch({ type: "removed", clipId: editingClip.id });
+            }}
+          />
 
           <section>
             <div className="cm-sec__head">
@@ -139,7 +184,9 @@ export function PlayerPane({
                 <div
                   key={c.id}
                   className={
-                    "cm-crow" + (player.isLooping(c.startSeconds, c.endSeconds) ? " is-looping" : "")
+                    "cm-crow" +
+                    (player.isLooping(c.startSeconds, c.endSeconds) ? " is-looping" : "") +
+                    (c.id === editingClip?.id ? " is-editing" : "")
                   }
                 >
                   <div className="cm-crow__t">
@@ -170,9 +217,18 @@ export function PlayerPane({
                     {c.note && <div className="cm-crow__note">{c.note}</div>}
                   </div>
                   <div className="cm-crow__act">
-                    <button type="button" onClick={() => void onRemove(c)}>
-                      Remove
-                    </button>
+                    {c.id === editingClip?.id ? (
+                      <span className="cm-crow__editing">Editing ↑</span>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => dispatch({ type: "edit", clip: c })}>
+                          Edit
+                        </button>
+                        <button type="button" onClick={() => void onRemove(c)}>
+                          Remove
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
@@ -303,108 +359,188 @@ function WatchInfo({ video }: { video: Video }) {
   );
 }
 
-function MarkDeck({
+/** IN or OUT: a Mark button (the playhead) over a typable MM:SS field. */
+function TimeMark({
+  label,
+  field,
+  onField,
+  playhead,
+  onEnter,
+}: {
+  label: string;
+  field: TimeField;
+  onField: (f: TimeField) => void;
+  playhead: number;
+  onEnter: () => void;
+}) {
+  const bad = field.text.trim() !== "" && field.seconds === null;
+  return (
+    <div className={"cm-tmark" + (field.seconds !== null ? " is-set" : "") + (bad ? " is-bad" : "")}>
+      <div className="cm-tmark__top">
+        <small>{label}</small>
+        <button
+          type="button"
+          className="cm-tmark__set"
+          title={`Set ${label} to the playhead`}
+          onClick={() => onField(markedTime(playhead))}
+        >
+          Mark
+        </button>
+      </div>
+      <input
+        value={field.text}
+        placeholder="--:--"
+        aria-label={`${label} time, MM:SS`}
+        aria-invalid={bad}
+        inputMode="numeric"
+        {...plainText}
+        spellCheck={false}
+        onChange={(e) => onField(typedTime(e.target.value))}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onEnter();
+        }}
+      />
+    </div>
+  );
+}
+
+/**
+ * The one clip editor panel: New clip (Save clip, then it clears) or, given a Clip, Edit clip
+ * (Remove clip, Cancel, Save changes). The draft lives in the page's editor state, so the
+ * New draft survives an edit. No save on blur.
+ */
+function ClipEditor({
+  panelRef,
+  clip,
+  draft,
+  onChange,
   player,
   dancerConfig,
   tagConfig,
   onSave,
+  onCancel,
+  onRemove,
 }: {
+  panelRef: React.RefObject<HTMLElement>;
+  clip: Clip | null;
+  draft: Draft;
+  onChange: (patch: Partial<Draft>) => void;
   player: VideoPlayer;
   dancerConfig: PillConfig<"dancer">;
   tagConfig: PillConfig<"tag">;
   onSave: (input: ClipInput) => Promise<void>;
+  onCancel: () => void;
+  onRemove: () => Promise<void>;
 }) {
-  const [mark, setMark] = useState<{ s: number | null; e: number | null }>({ s: null, e: null });
-  const [dancers, setDancers] = useState<Pill<"dancer">[]>([]);
-  const [dancerDraft, setDancerDraft] = useState("");
-  const [tags, setTags] = useState<Pill<"tag">[]>([]);
-  const [tagDraft, setTagDraft] = useState("");
-  const [note, setNote] = useState("");
   const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const editing = clip !== null;
 
-  const save = async () => {
-    if (mark.s === null || mark.e === null) {
-      setError("Mark both IN and OUT before saving.");
-      return;
-    }
-    if (mark.e <= mark.s) {
-      setError("The clip has to end after it starts.");
-      return;
-    }
-    // Text still in the Dancers or Tags field counts: it becomes a pill before saving.
-    const allDancers = commitDraft(dancerConfig, dancers, dancerDraft);
-    const allTags = commitDraft(tagConfig, tags, tagDraft);
-    setDancers(allDancers);
-    setDancerDraft("");
-    setTags(allTags);
-    setTagDraft("");
-    setSaving(true);
+  const run = async (work: () => Promise<void>) => {
+    setBusy(true);
     setError("");
     try {
-      await onSave({
-        startSeconds: mark.s,
-        endSeconds: mark.e,
-        note: note.trim(),
-        dancers: allDancers.map((p) => p.text),
-        tags: allTags.map((p) => p.text),
-      });
-      setMark({ s: null, e: null });
-      setDancers([]);
-      setTags([]);
-      setNote("");
+      await work();
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   };
 
+  const save = () => {
+    if (busy) return;
+    const out = draftInput(draft, dancerConfig, tagConfig);
+    if ("error" in out) {
+      setError(out.error);
+      return;
+    }
+    // Text still in the Dancers or Tags field became a pill; show it while saving.
+    onChange(out.draft);
+    void run(() => onSave(out.input));
+  };
+
   return (
-    <div className="cm-deck">
-      <div className="cm-deck__marks">
-        <button
-          type="button"
-          className={"cm-mark" + (mark.s != null ? " is-set" : "")}
-          onClick={() => setMark({ ...mark, s: player.currentTime })}
-        >
-          <small>IN</small>
-          {formatTime(mark.s)}
-        </button>
-        <span className="cm-deck__arrow">→</span>
-        <button
-          type="button"
-          className={"cm-mark" + (mark.e != null ? " is-set" : "")}
-          onClick={() => setMark({ ...mark, e: player.currentTime })}
-        >
-          <small>OUT</small>
-          {formatTime(mark.e)}
-        </button>
+    <section
+      ref={panelRef}
+      className={"cm-panel cm-editor" + (editing ? " is-editing" : "")}
+      aria-label={editing ? "Edit clip" : "New clip"}
+    >
+      <div className="cm-editor__head">
+        <span className="cm-eyebrow">
+          {editing ? (
+            <>
+              Editing clip · <b>{formatTime(clip.startSeconds)}</b>
+            </>
+          ) : (
+            "New clip"
+          )}
+        </span>
         <span className="cm-deck__live cm-mono">live {formatTime(player.currentTime)}</span>
       </div>
-      <div className="cm-deck__fields">
+      <div className="cm-tmarks">
+        <TimeMark
+          label="IN"
+          field={draft.in}
+          onField={(f) => onChange({ in: f })}
+          playhead={player.currentTime}
+          onEnter={save}
+        />
+        <span className="cm-deck__arrow">→</span>
+        <TimeMark
+          label="OUT"
+          field={draft.out}
+          onField={(f) => onChange({ out: f })}
+          playhead={player.currentTime}
+          onEnter={save}
+        />
+      </div>
+      <div className="cm-editor__fields">
         <PillInput
           config={dancerConfig}
-          pills={dancers}
-          onPills={setDancers}
-          draft={dancerDraft}
-          onDraft={setDancerDraft}
+          pills={draft.dancers}
+          onPills={(dancers) => onChange({ dancers })}
+          draft={draft.dancerDraft}
+          onDraft={(dancerDraft) => onChange({ dancerDraft })}
           placeholder="Dancers"
         />
         <PillInput
           config={tagConfig}
-          pills={tags}
-          onPills={setTags}
-          draft={tagDraft}
-          onDraft={setTagDraft}
+          pills={draft.tags}
+          onPills={(tags) => onChange({ tags })}
+          draft={draft.tagDraft}
+          onDraft={(tagDraft) => onChange({ tagDraft })}
           placeholder="Tags"
         />
-        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note" {...plainText} />
-        <button type="button" className="cm-save" onClick={() => void save()} disabled={saving}>
-          {saving ? "Saving…" : "Save clip"}
-        </button>
+        <input
+          className="cm-editor__note"
+          value={draft.note}
+          onChange={(e) => onChange({ note: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save();
+          }}
+          placeholder="Note"
+          {...plainText}
+        />
       </div>
       {error && <div className="cm-error">{error}</div>}
-    </div>
+      {editing ? (
+        <div className="cm-editor__act">
+          <button type="button" className="cm-editor__rm" disabled={busy} onClick={() => void run(onRemove)}>
+            Remove clip
+          </button>
+          <button type="button" className="cm-editor__cancel" onClick={onCancel}>
+            Cancel <span className="cm-mono">esc</span>
+          </button>
+          <button type="button" className="cm-save" onClick={save} disabled={busy}>
+            {busy ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      ) : (
+        <button type="button" className="cm-save cm-editor__new" onClick={save} disabled={busy}>
+          {busy ? "Saving…" : "Save clip"}
+        </button>
+      )}
+    </section>
   );
 }

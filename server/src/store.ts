@@ -260,6 +260,31 @@ export class Store {
     return this.getClip(insert()) as Clip;
   }
 
+  /**
+   * Replaces a Clip's IN, OUT, Note, Dancers and Tags in full (ADR-0008), with the same
+   * normalisation and end > start rule as createClip. Undefined for an unknown id.
+   */
+  updateClip(id: number, input: ClipInput): Clip | undefined {
+    const { startSeconds, endSeconds, note, tags, dancers = [] } = input;
+    if (!(endSeconds > startSeconds)) {
+      throw new Error("end_seconds must be greater than start_seconds");
+    }
+    const update = this.db.transaction(() => {
+      const changed = this.db
+        .prepare("UPDATE clips SET start_seconds = ?, end_seconds = ?, note = ? WHERE id = ?")
+        .run(startSeconds, endSeconds, note, id).changes;
+      if (changed === 0) return false;
+      this.db.prepare("DELETE FROM clip_dancers WHERE clip_id = ?").run(id);
+      this.db.prepare("DELETE FROM clip_tags WHERE clip_id = ?").run(id);
+      const insertDancer = this.db.prepare("INSERT INTO clip_dancers (clip_id, name) VALUES (?, ?)");
+      const insertTag = this.db.prepare("INSERT INTO clip_tags (clip_id, tag) VALUES (?, ?)");
+      for (const name of normalizeDancers(dancers)) insertDancer.run(id, name);
+      for (const tag of normalizeTags(tags)) insertTag.run(id, tag);
+      return true;
+    });
+    return update() ? this.getClip(id) : undefined;
+  }
+
   deleteClip(id: number): boolean {
     return this.db.prepare("DELETE FROM clips WHERE id = ?").run(id).changes > 0;
   }

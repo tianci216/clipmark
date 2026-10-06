@@ -11,14 +11,23 @@ export interface WatchKeyInput {
   /** Something is in fullscreen; Escape there belongs to the browser. */
   fullscreen: boolean;
   looping: boolean;
+  /** The clip editor is in edit mode; Escape cancels that before it stops a Loop. */
+  editing: boolean;
 }
 
-export type WatchKeyAction = "fullscreen" | "stop-loop" | null;
+export type WatchKeyAction = "fullscreen" | "cancel-edit" | "stop-loop" | null;
 
-/** Watch page keys: F toggles native fullscreen, Escape stops the Loop without seeking. */
+/**
+ * Watch page keys: F toggles native fullscreen. Escape cancels an open clip edit, else stops
+ * the Loop without seeking.
+ */
 export function watchKeyAction(k: WatchKeyInput): WatchKeyAction {
   if (!k.active) return null;
-  if (k.key === "Escape") return k.looping && !k.fullscreen ? "stop-loop" : null;
+  if (k.key === "Escape") {
+    if (k.fullscreen) return null;
+    if (k.editing) return "cancel-edit";
+    return k.looping ? "stop-loop" : null;
+  }
   if ((k.key === "f" || k.key === "F") && !k.typing && !k.meta && !k.ctrl && !k.alt) return "fullscreen";
   return null;
 }

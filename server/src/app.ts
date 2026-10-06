@@ -427,35 +427,39 @@ export function createApp({
     res.json(store.getClips().flatMap((c) => visibleClip(folder, c) ?? []));
   });
 
-  app.post("/api/clips", (req, res) => {
-    const body = (req.body ?? {}) as Partial<ClipInput> & { videoHash?: string };
-    const videoHash = body.videoHash;
-    const startSeconds = body.startSeconds;
-    const endSeconds = body.endSeconds;
-    if (!videoHash) {
-      res.status(400).json({ error: "A video hash is required." });
-      return;
-    }
+  /** A create or update body as a ClipInput, or the 400 message (same rules for both). */
+  const clipInput = (raw: unknown): ClipInput | { error: string } => {
+    const body = (raw ?? {}) as Partial<ClipInput>;
+    const { startSeconds, endSeconds } = body;
     if (
       typeof startSeconds !== "number" ||
       typeof endSeconds !== "number" ||
       !Number.isFinite(startSeconds) ||
       !Number.isFinite(endSeconds)
     ) {
-      res.status(400).json({ error: "Start and end times must be numbers." });
-      return;
+      return { error: "Start and end times must be numbers." };
     }
-    if (!(endSeconds > startSeconds)) {
-      res.status(400).json({ error: "The clip has to end after it starts." });
-      return;
-    }
-    const input: ClipInput = {
+    if (!(endSeconds > startSeconds)) return { error: "The clip has to end after it starts." };
+    return {
       startSeconds,
       endSeconds,
       note: typeof body.note === "string" ? body.note : "",
       tags: strings(body.tags),
       dancers: strings(body.dancers),
     };
+  };
+
+  app.post("/api/clips", (req, res) => {
+    const videoHash = ((req.body ?? {}) as { videoHash?: string }).videoHash;
+    if (!videoHash) {
+      res.status(400).json({ error: "A video hash is required." });
+      return;
+    }
+    const input = clipInput(req.body);
+    if ("error" in input) {
+      res.status(400).json(input);
+      return;
+    }
     // Only Videos in the current Library Folder can take Clips: the UI could not show
     // one on a hidden Video, and the response must never carry an absolute path.
     const folder = libraryFolder();
@@ -467,6 +471,32 @@ export function createApp({
     try {
       const clip = store.createClip(videoHash, input);
       res.status(201).json(visibleClip(folder, clip));
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  // Full replacement of a Clip's times, Note, Dancers and Tags (ADR-0008).
+  app.put("/api/clips/:id", (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: "A numeric clip id is required." });
+      return;
+    }
+    const input = clipInput(req.body);
+    if ("error" in input) {
+      res.status(400).json(input);
+      return;
+    }
+    // A Clip on a Video outside the Library Folder is hidden, so it is unknown here too.
+    const folder = libraryFolder();
+    const existing = store.getClip(id);
+    if (folder === null || !existing || !visibleClip(folder, existing)) {
+      res.status(404).json({ error: "No such clip." });
+      return;
+    }
+    try {
+      res.json(visibleClip(folder, store.updateClip(id, input) as Clip));
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
     }

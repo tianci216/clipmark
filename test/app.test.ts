@@ -419,6 +419,85 @@ describe("Dancers on a Clip", () => {
   });
 });
 
+describe("PUT /api/clips/:id", () => {
+  async function createOne() {
+    await start({ env: { CLIPMARK_VIDEO_DIR: folder("A", { "alpha.mp4": "alpha bytes" }) } });
+    const [alpha] = (await get("/api/tree")).body.videos;
+    const created = await post("/api/clips", {
+      videoHash: alpha.hash,
+      startSeconds: 10,
+      endSeconds: 20,
+      note: "first",
+      tags: ["swing out", "tuck"],
+      dancers: ["Dax Hock", "Sarah Breck"],
+    });
+    return created.body;
+  }
+
+  it("replaces IN, OUT and Note and returns the updated Clip, which persists", async () => {
+    const clip = await createOne();
+    const updated = await put(`/api/clips/${clip.id}`, {
+      startSeconds: 12.5,
+      endSeconds: 31,
+      note: "  second  ",
+      tags: ["tuck"],
+      dancers: ["Dax Hock"],
+    });
+    expect(updated.status).toBe(200);
+    expect(updated.body).toMatchObject({
+      id: clip.id,
+      videoHash: clip.videoHash,
+      file: clip.file,
+      startSeconds: 12.5,
+      endSeconds: 31,
+      note: "  second  ",
+    });
+    const [listed] = (await get("/api/clips")).body;
+    expect(listed).toEqual(updated.body);
+  });
+
+  it("replaces Dancers and Tags in full, with the same normalisation as create", async () => {
+    const clip = await createOne();
+    const updated = await put(`/api/clips/${clip.id}`, {
+      startSeconds: 10,
+      endSeconds: 20,
+      note: "",
+      tags: [" Lindy  HOP ", "lindy hop", "kick"],
+      dancers: ["naomi  uyama", "Naomi Uyama", "deVries"],
+    });
+    expect(updated.body.tags).toEqual(["lindy hop", "kick"]);
+    expect(updated.body.dancers).toEqual(["naomi uyama", "deVries"]);
+    expect(store.getDancers().map((d) => d.toLowerCase()).sort()).toEqual(["devries", "naomi uyama"]);
+
+    const cleared = await put(`/api/clips/${clip.id}`, { startSeconds: 10, endSeconds: 20, note: "", tags: [], dancers: [] });
+    expect(cleared.body.tags).toEqual([]);
+    expect(cleared.body.dancers).toEqual([]);
+    expect((await get("/api/clips")).body[0]).toMatchObject({ tags: [], dancers: [] });
+  });
+
+  it("refuses an OUT that is not after IN with the create message, and changes nothing", async () => {
+    const clip = await createOne();
+    const res = await put(`/api/clips/${clip.id}`, { startSeconds: 20, endSeconds: 20, note: "", tags: [], dancers: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("The clip has to end after it starts.");
+    expect((await get("/api/clips")).body[0]).toEqual(clip);
+  });
+
+  it("refuses times that are not numbers", async () => {
+    const clip = await createOne();
+    const res = await put(`/api/clips/${clip.id}`, { startSeconds: "00:10", endSeconds: 20, note: "", tags: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Start and end times must be numbers.");
+  });
+
+  it("answers 404 for an unknown id", async () => {
+    await createOne();
+    const res = await put("/api/clips/9999", { startSeconds: 1, endSeconds: 2, note: "", tags: [], dancers: [] });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("No such clip.");
+  });
+});
+
 describe("POST /api/downloads", () => {
   it("queues a job for a subfolder and reports it with progress, then the landed file", async () => {
     const lib = folder("lib", { "Classes/old.mp4": "old" });
