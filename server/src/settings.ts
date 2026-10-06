@@ -30,6 +30,33 @@ export function isCookiesFromBrowser(input: unknown): input is CookiesFromBrowse
   return typeof input === "string" && (COOKIE_BROWSERS as readonly string[]).includes(input);
 }
 
+/** Appearance (spec #17): saved server-side so it holds across launches and devices. */
+export const FONT_KEY = "font";
+export const COLOR_KEY = "color";
+export const FONTS = ["public-sans", "sf-pro"] as const;
+export const COLORS = ["paper", "ember"] as const;
+export type Font = (typeof FONTS)[number];
+export type Color = (typeof COLORS)[number];
+
+export function isFont(input: unknown): input is Font {
+  return typeof input === "string" && (FONTS as readonly string[]).includes(input);
+}
+
+export function isColor(input: unknown): input is Color {
+  return typeof input === "string" && (COLORS as readonly string[]).includes(input);
+}
+
+export function getAppearance(store: Store): { font: Font; color: Color } {
+  const font = store.getSetting(FONT_KEY);
+  const color = store.getSetting(COLOR_KEY);
+  return { font: isFont(font) ? font : FONTS[0], color: isColor(color) ? color : COLORS[0] };
+}
+
+export function setAppearance(store: Store, patch: { font?: Font; color?: Color }): void {
+  if (patch.font) store.setSetting(FONT_KEY, patch.font);
+  if (patch.color) store.setSetting(COLOR_KEY, patch.color);
+}
+
 export function getLibraryFolder(store: Store): string | null {
   return store.getSetting(LIBRARY_FOLDER_KEY);
 }

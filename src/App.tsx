@@ -7,6 +7,7 @@ import {
   fetchSettings,
   fetchTree,
   removeDownload,
+  saveSettings,
   startDownload,
   type Clip,
   type ClipInput,
@@ -14,15 +15,16 @@ import {
   type Settings,
   type Video,
 } from "./lib/api";
+import { applyAppearance, type Appearance } from "./lib/appearance";
 import type { DownloadControls } from "./lib/downloadControls";
 import { buildFeed } from "./lib/feed";
 import { FeedPane } from "./lib/FeedPane";
-import { MusicNav } from "./lib/MusicNav";
-import { MusicPane } from "./lib/MusicPane";
+import { MusicPane, MusicSearch } from "./lib/MusicPane";
 import { MusicPlayer } from "./lib/MusicPlayer";
 import { PlayerPane } from "./lib/PlayerPane";
 import { SettingsPane } from "./lib/SettingsPane";
 import { Slide } from "./lib/Slide";
+import { readFlag, writeFlag } from "./lib/storedFlag";
 import { TabSwitch, type Tab } from "./lib/TabSwitch";
 import { TagFilter } from "./lib/TagFilter";
 import { buildTagIndex } from "./lib/tags";
@@ -37,6 +39,7 @@ const POLL_ACTIVE_MS = 1000;
 const POLL_IDLE_MS = 5000;
 const TOAST_MS = 8000;
 const TAB_KEY = "clipmark.tab";
+const PLAYER_HIDDEN_KEY = "clipmark.musicbar.hidden";
 
 /** What the Clips page shows instead of the feed: a Video, optionally looping one of its Clips. */
 export interface Target {
@@ -79,7 +82,8 @@ export function App() {
   const feedScroll = useRef(0);
   const isPhone = useMedia(PHONE_QUERY);
   const [tab, setTabState] = useState<Tab>(readTab);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  // Per device: hiding the player bar never stops playback.
+  const [playerHidden, setPlayerHiddenState] = useState(() => readFlag(PLAYER_HIDDEN_KEY));
   const music = useMusicLibrary(tab === "music");
   const player = useAudioPlayer();
   const { setVisibleList } = player;
@@ -90,12 +94,16 @@ export function App() {
   const setTab = useCallback((next: Tab) => {
     setTabState(next);
     setShowSettings(false);
-    setDrawerOpen(false);
     try {
       localStorage.setItem(TAB_KEY, next);
     } catch {
       // Private mode: the tab just isn't remembered.
     }
+  }, []);
+
+  const setPlayerHidden = useCallback((hidden: boolean) => {
+    setPlayerHiddenState(hidden);
+    writeFlag(PLAYER_HIDDEN_KEY, hidden);
   }, []);
 
   const loadLibrary = useCallback(async (): Promise<Video[]> => {
@@ -116,6 +124,37 @@ export function App() {
       })
       .catch(() => setStatus("error"));
   }, [loadLibrary]);
+
+  // Appearance follows the server setting; another device's change shows when this one comes back into view.
+  const font = settings?.font;
+  const color = settings?.color;
+  useEffect(() => {
+    if (font && color) applyAppearance({ font, color });
+  }, [font, color]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      fetchSettings()
+        .then((s) => setSettings((prev) => (prev ? { ...prev, font: s.font, color: s.color } : prev)))
+        .catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+
+  const changeAppearance = useCallback((patch: Partial<Appearance>) => {
+    // Applies at once; a rejected save puts the previous choice back.
+    let previous: Appearance | null = null;
+    setSettings((prev) => {
+      if (!prev) return prev;
+      previous = { font: prev.font, color: prev.color };
+      return { ...prev, ...patch };
+    });
+    saveSettings(patch).catch(() => {
+      setSettings((prev) => (prev && previous ? { ...prev, ...previous } : prev));
+    });
+  }, []);
 
   // Downloads: poll the queue, and when a file lands refetch the library until the
   // new Video shows, then toast and drop the row (the server forgets it on DELETE).
@@ -215,7 +254,6 @@ export function App() {
   }, []);
 
   const openSettings = useCallback(() => setShowSettings(true), []);
-  const toggleSettings = useCallback(() => setShowSettings((s) => !s), []);
 
   // No logo: clicking Clips while already on Clips returns to the feed.
   const pickTab = useCallback(
@@ -318,22 +356,7 @@ export function App() {
   );
 
   const musicPage = (
-    <MusicPane
-      library={music}
-      player={player}
-      onSettings={openSettings}
-      menu={
-        <button
-          className="mx-menu"
-          type="button"
-          aria-label="Crates and playlists"
-          title="Crates and playlists"
-          onClick={() => setDrawerOpen(true)}
-        >
-          ☰
-        </button>
-      }
-    />
+    <MusicPane library={music} player={player} onSettings={openSettings} />
   );
 
   const showPlayer = onMusic || player.display !== null;
@@ -350,15 +373,19 @@ export function App() {
       <TopBar
         tabs={<TabSwitch tab={tab} onTab={pickTab} />}
         search={
-          onMusic ? null : (
+          onMusic ? (
+            <MusicSearch library={music} />
+          ) : (
             <div className="cm-search" role="search">
               <TagFilter index={tagIndex} tokens={tokens} onTokens={changeTokens} compact />
             </div>
           )
         }
         downloads={onMusic ? null : downloadControls}
+        appearance={{ font: settings.font, color: settings.color }}
+        onAppearance={changeAppearance}
         settingsOpen={showSettings}
-        onSettings={toggleSettings}
+        onSettingsPage={openSettings}
       />
     );
 
@@ -376,13 +403,9 @@ export function App() {
           </div>
         )}
       </div>
-      {showPlayer && <MusicPlayer player={player} />}
-      <div className={"mx-overlay" + (drawerOpen ? " is-open" : "")} onClick={() => setDrawerOpen(false)} />
-      <aside className={"mx-drawer" + (drawerOpen ? " is-open" : "")} aria-hidden={!drawerOpen}>
-        <MusicNav library={music} onPick={() => setDrawerOpen(false)} />
-      </aside>
+      {showPlayer && <MusicPlayer player={player} hidden={playerHidden} onHidden={setPlayerHidden} />}
       {toast && (
-        <div className={"cm-toast" + (showPlayer ? " is-raised" : "")} role="status">
+        <div className={"cm-toast" + (showPlayer && !playerHidden ? " is-raised" : "")} role="status">
           <span className="cm-toast__text">Downloaded {toast.title}</span>
           <button
             className="cm-toast__btn"

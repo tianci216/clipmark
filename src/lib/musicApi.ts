@@ -78,6 +78,14 @@ export function audioUrl(id: number): string {
 }
 
 /** m:ss for the track table; blank when unknown, as mobile-mixxx showed it. */
+/** The list heading: its name, then "Crate · / Playlist · N tracks · M min". */
+export function listHeading(view: MusicView, tracks: Track[]): { title: string; meta: string } {
+  const seconds = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
+  const count = `${tracks.length} ${tracks.length === 1 ? "track" : "tracks"} · ${Math.round(seconds / 60)} min`;
+  if (view.type === "all") return { title: "All tracks", meta: count };
+  return { title: view.name, meta: `${view.type === "crate" ? "Crate" : "Playlist"} · ${count}` };
+}
+
 export function formatDuration(seconds: number): string {
   if (!seconds) return "";
   return formatClock(seconds);
