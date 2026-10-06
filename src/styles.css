@@ -245,6 +245,15 @@ input, select, textarea { font: inherit; color: inherit; }
   border-radius: 999px; padding: 3px 6px 3px 10px;
   font-family: var(--cm-display); font-size: 12.5px; font-weight: 500;
 }
+/* a folder (search only): dashed outline, soft ink, a folder glyph, path as written */
+.cm-pill--folder {
+  background: transparent; border: 1px dashed var(--cm-line-strong); color: var(--cm-soft);
+  border-radius: 6px; padding: 3px 6px 3px 8px; font-weight: 500;
+}
+.cm-pill--folder::before, .cm-pills__opt--folder > span:first-child::before {
+  content: "▤"; font-size: 10px; opacity: 0.6;
+}
+.cm-pills__opt--folder > span:first-child::before { margin-right: 6px; }
 .cm-pill--sm { font-size: 11px; padding: 3px 6px; font-family: var(--cm-body); }
 .cm-pills__opt--dancer > span { font-family: var(--cm-display); font-weight: 500; }
 /* a saved Clip's name: Dancers in plain text, then Tag pills */
@@ -703,6 +712,9 @@ input, select, textarea { font: inherit; color: inherit; }
 button.cm-card__title:hover, .cm-card:not(.cm-card--dl):hover .cm-card__title { color: var(--cm-accent); }
 .cm-card__meta { font-size: 12.5px; color: var(--cm-muted); line-height: 1.55; }
 .cm-card__meta b { font-weight: 500; color: var(--cm-accent); }
+/* the folder name adds a folder pill to the search */
+.cm-card__folder { color: inherit; font: inherit; text-align: left; }
+.cm-card__folder:hover { color: var(--cm-accent); text-decoration: underline; text-underline-offset: 2px; }
 .cm-card__matches { list-style: none; margin: 6px 0 0; padding: 6px 0 0; border-top: 1px solid var(--cm-line); }
 .cm-card__matches button {
   display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 8px; width: 100%; text-align: left;
@@ -762,6 +774,9 @@ button.cm-card__title:hover, .cm-card:not(.cm-card--dl):hover .cm-card__title { 
 .cm-chip.is-on { background: var(--cm-ink); color: var(--cm-bg); }
 .cm-chip:focus { outline: none; }
 .cm-chip:focus-visible { outline: 2px solid var(--cm-accent); outline-offset: 2px; }
+/* the feed's suggested chips: a Dancer chip reads as a name, a Tag chip stays lowercase */
+.cm-chip--dancer { font-family: var(--cm-display); font-size: 14.5px; }
+.cm-chip--tag { text-transform: lowercase; }
 @media (max-width: 860px) {
   .cm-chips { padding: 2px 14px 12px; gap: 8px; }
 }

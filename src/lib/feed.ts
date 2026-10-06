@@ -1,10 +1,10 @@
 import type { Clip, Download, Video } from "./api";
 import { dirname, folderLabel, formatUploadDate } from "./format";
-import type { Pill } from "./pills";
+import { buildTermIndex, type Pill, type Suggestion, type Term } from "./pills";
 import { orphanVideoFor } from "./rail";
 
-/** What the top-bar search filters by. A folder kind joins these with the chips. */
-export type SearchKind = "dancer" | "tag";
+/** What the top-bar search filters by: Dancers, Tags and the folder a Video sits in. */
+export type SearchKind = "dancer" | "tag" | "folder";
 export type SearchPill = Pill<SearchKind>;
 
 const contains = (values: string[], text: string) => {
@@ -12,19 +12,61 @@ const contains = (values: string[], text: string) => {
   return values.some((v) => v.toLowerCase().includes(q));
 };
 
-/** A Dancer pill looks only at Dancers and a Tag pill only at Tags, by case-insensitive substring. */
-export function pillMatches(pill: SearchPill, clip: Clip): boolean {
+/** The folder a Video sits in, as a folder pill names it ("Library Folder" for the top level). */
+export const videoFolder = (video: Video): string => folderLabel(dirname(video.file));
+
+/**
+ * A Dancer pill looks only at Dancers and a Tag pill only at Tags, by case-insensitive substring.
+ * A folder pill matches every Clip on a Video in exactly that folder (not its subfolders), going
+ * by the card's own file: two files sharing a Hash can sit in different folders.
+ */
+export function pillMatches(pill: SearchPill, clip: Clip, video: Video): boolean {
   switch (pill.kind) {
     case "dancer":
       return contains(clip.dancers, pill.text);
     case "tag":
       return contains(clip.tags, pill.text);
+    case "folder":
+      return videoFolder(video).toLowerCase() === pill.text.trim().toLowerCase();
   }
 }
 
-/** A Clip matches the search when every pill matches it. */
-export function matchesPills(pills: SearchPill[], clip: Clip): boolean {
-  return pills.every((p) => pillMatches(p, clip));
+/** A Clip on a Video matches the search when every pill matches it. */
+export function matchesPills(pills: SearchPill[], clip: Clip, video: Video): boolean {
+  return pills.every((p) => pillMatches(p, clip, video));
+}
+
+/** How many suggested chips the feed shows after "All". */
+export const CHIP_COUNT = 16;
+
+export type SearchChip = Suggestion<"dancer" | "tag">;
+
+/** The chips row: the most-used Dancers and Tags together, by Clip count then A-Z. */
+export function searchChips(clips: Clip[], limit = CHIP_COUNT): SearchChip[] {
+  const dancers = buildTermIndex(clips.map((c) => c.dancers)).map((t) => ({ kind: "dancer" as const, ...t }));
+  const tags = buildTermIndex(clips.map((c) => c.tags)).map((t) => ({ kind: "tag" as const, ...t }));
+  return [...dancers, ...tags]
+    .sort((a, b) => b.count - a.count || a.text.localeCompare(b.text))
+    .slice(0, limit);
+}
+
+const samePill = (a: Pill, b: Pill) => a.kind === b.kind && a.text.toLowerCase() === b.text.toLowerCase();
+
+/** Whether a chip's pill is in the search (same kind, any case). */
+export function chipOn(search: SearchPill[], chip: Pill<SearchKind>): boolean {
+  return search.some((p) => samePill(p, chip));
+}
+
+/** Clicking a chip: drops its pill from the search if there, else adds it at the end. */
+export function toggleChip(search: SearchPill[], chip: Pill<SearchKind>): SearchPill[] {
+  return chipOn(search, chip)
+    ? search.filter((p) => !samePill(p, chip))
+    : [...search, { kind: chip.kind, text: chip.text }];
+}
+
+/** The filtered feed's empty state, naming the search. */
+export function noMatchText(search: SearchPill[]): string {
+  return `No clips match ${search.map((p) => p.text).join(" + ")}`;
 }
 
 /** How many matching Clips a filtered card lists under its title. */
@@ -83,16 +125,18 @@ export interface Feed {
 }
 
 /**
- * A Video card's two meta lines, minus the clip count: `place` is "channel · folder"
- * (just the folder without a channel); `origin` follows the count — the upload date,
- * "local file" without a Source, or null when the Source has no date.
+ * A Video card's two meta lines, minus the clip count: the first reads "channel · folder"
+ * (just the folder without a channel; the folder is what a folder pill names); `origin`
+ * follows the count — the upload date, "local file" without a Source, or null when the
+ * Source has no date.
  */
-export function cardMeta(video: Video): { place: string; origin: string | null } {
-  const folder = folderLabel(dirname(video.file));
+export function cardMeta(video: Video): { channel: string | null; folder: string; origin: string | null } {
+  const folder = videoFolder(video);
   const { source } = video;
-  if (!source) return { place: folder, origin: "local file" };
+  if (!source) return { channel: null, folder, origin: "local file" };
   return {
-    place: source.channel ? `${source.channel} · ${folder}` : folder,
+    channel: source.channel,
+    folder,
     origin: source.uploadDate ? formatUploadDate(source.uploadDate) : null,
   };
 }
@@ -137,7 +181,7 @@ export function buildFeed(videos: Video[], clips: Clip[], pills: SearchPill[], d
   const cards: FeedCard[] = filtering ? [] : downloads.map(downloadCard);
   for (const { video, missing } of rows) {
     const own = (clipsByHash.get(video.hash) ?? []).slice().sort(byStart);
-    const matches = filtering ? own.filter((c) => matchesPills(pills, c)) : own;
+    const matches = filtering ? own.filter((c) => matchesPills(pills, c, video)) : own;
     if (filtering && matches.length === 0) continue;
     cards.push({
       kind: "video",
@@ -152,4 +196,21 @@ export function buildFeed(videos: Video[], clips: Clip[], pills: SearchPill[], d
   }
   const empty = cards.length > 0 ? null : filtering ? "filter" : "library";
   return { cards, filtering, empty };
+}
+
+/**
+ * The search's folder suggestions: each folder with the Clips its cards hold (missing-file
+ * cards included), most first then A-Z. Folders whose Videos have no Clips are left out:
+ * a folder pill only ever shows Clips.
+ */
+export function folderTerms(videos: Video[], clips: Clip[]): Term[] {
+  const counts = new Map<string, number>();
+  for (const card of buildFeed(videos, clips, [], []).cards) {
+    if (card.kind !== "video" || card.total === 0) continue;
+    const folder = videoFolder(card.video);
+    counts.set(folder, (counts.get(folder) ?? 0) + card.total);
+  }
+  return [...counts]
+    .map(([text, count]) => ({ text, count }))
+    .sort((a, b) => b.count - a.count || a.text.localeCompare(b.text));
 }
