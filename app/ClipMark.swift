@@ -5,7 +5,17 @@ let PORT = 8899
 let HOME_URL = URL(string: "http://127.0.0.1:8899")!
 let HEALTH_URL = URL(string: "http://127.0.0.1:8899/api/health")!
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+/// Marks the page as running inside this shell before any page script runs, so the web
+/// content reserves the traffic-light row (src/shell.css) only here, never in a browser.
+let SHELL_MARKER_JS = "document.documentElement.dataset.shell = 'macos';"
+
+/// True for the local server's own origin; anything else is an external link.
+func isAppOrigin(_ url: URL) -> Bool {
+    guard let host = url.host?.lowercased() else { return false }
+    return (host == "127.0.0.1" || host == "localhost") && url.port == PORT
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
     var window: NSWindow!
     var webView: WKWebView!
     var serverProcess: Process?
@@ -116,17 +126,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func makeWindow() {
         let config = WKWebViewConfiguration()
         config.mediaTypesRequiringUserActionForPlayback = []
+        // Element fullscreen: the video's fullscreen button and the F key.
+        config.preferences.isElementFullscreenEnabled = true
+        config.userContentController.addUserScript(WKUserScript(
+            source: SHELL_MARKER_JS,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsBackForwardNavigationGestures = true
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
         self.webView = webView
 
+        // No title strip: the web content runs under a transparent title bar and keeps
+        // its top ~28 px free for the traffic lights. Drag and double-click-zoom come
+        // from the system title bar, which still sits above the web view.
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 860),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "ClipMark"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.center()
         window.contentView = webView
@@ -139,6 +163,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func loadApp() {
         guard !webView.isLoading, webView.url == nil else { return }
         webView.load(URLRequest(url: HOME_URL))
+    }
+
+    // MARK: - External links
+
+    /// The app window only ever shows the local server: another http(s) origin, or a
+    /// mailto link, opens in the default app and the window stays on its page.
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if let url = navigationAction.request.url,
+           navigationAction.targetFrame?.isMainFrame ?? true,
+           let scheme = url.scheme?.lowercased(),
+           ["http", "https", "mailto"].contains(scheme),
+           !isAppOrigin(url) {
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    /// New-window requests (target=_blank, window.open) open in the default browser.
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                 for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = navigationAction.request.url, url.scheme != "about" {
+            NSWorkspace.shared.open(url)
+        }
+        return nil
     }
 
     private func buildMainMenu() {
