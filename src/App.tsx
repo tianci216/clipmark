@@ -345,7 +345,6 @@ export function App() {
         orphan={!videos.some((v) => v.file === target.video.file)}
         videos={videos}
         clips={clips}
-        phone={isPhone}
         onSave={handleSave}
         onRemove={handleRemove}
         onOpen={open}

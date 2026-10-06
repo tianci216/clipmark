@@ -6,10 +6,13 @@ import { railFor } from "./rail";
 import { Strip, stripDuration } from "./Strip";
 import type { VideoPlayer } from "./useVideoPlayer";
 import { useVideoPlayer } from "./useVideoPlayer";
+import { fullscreenElement, isTypingTarget, toggleFullscreen, watchKeyAction } from "./watchKeys";
 
 /**
- * The player: breadcrumb, native video, clip strip, mark deck, "Clips on this video" and
- * "Same tags, other videos". Rendered in the desktop main pane and as the phone's player screen.
+ * The watch page, two columns. Left: native video, clip strip (a Clip's bar Loops it), the
+ * Loop hint and the video info. Right (about 420 px): the mark deck, "Clips on this video"
+ * and "Same tags, other videos". Narrow widths stack them: video, strip, hint, deck, Clips,
+ * related, info. Keys: Escape stops the Loop without seeking; F toggles native fullscreen.
  * Mount it with a key of file + loop clip so the loop state machine restarts per target.
  */
 export function PlayerPane({
@@ -18,7 +21,6 @@ export function PlayerPane({
   orphan,
   videos,
   clips,
-  phone,
   onSave,
   onRemove,
   onOpen,
@@ -29,141 +31,202 @@ export function PlayerPane({
   orphan: boolean;
   videos: Video[];
   clips: Clip[];
-  phone: boolean;
   onSave: (video: Video, input: ClipInput) => Promise<void>;
   onRemove: (clip: Clip) => Promise<void>;
   onOpen: (video: Video, clip: Clip | null) => void;
-  /** False while the page is hidden (behind Music or Settings): the video pauses. */
+  /** False while the page is hidden (behind Music or Settings): the video pauses, keys are off. */
   active?: boolean;
 }) {
   const player = useVideoPlayer(
     loopClip ? { start: loopClip.startSeconds, end: loopClip.endSeconds } : null,
   );
-  const { videoRef } = player;
+  const { videoRef, stopLoop } = player;
+  const looping = !!player.loop;
   useEffect(() => {
     if (!active) videoRef.current?.pause();
   }, [active, videoRef]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const action = watchKeyAction({
+        key: e.key,
+        meta: e.metaKey,
+        ctrl: e.ctrlKey,
+        alt: e.altKey,
+        typing: isTypingTarget(e.target),
+        active,
+        fullscreen: fullscreenElement() !== null,
+        looping,
+      });
+      if (action === "stop-loop") stopLoop();
+      else if (action === "fullscreen") {
+        e.preventDefault();
+        toggleFullscreen(videoRef.current);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active, looping, stopLoop, videoRef]);
+
   const { own, others } = useMemo(() => railFor(video, videos, clips), [video, videos, clips]);
   const duration = player.duration > 0 ? player.duration : stripDuration(video.durationSeconds, own);
 
   return (
-    <div className="cm-main__scroll">
-      <div className="cm-path cm-mono">
-        {folderLabel(dirname(video.file))} <i>›</i> <b>{basename(video.file)}</b>
-        {loopClip && (
-          <>
-            {" "}
-            <i>›</i> clip at {formatTime(loopClip.startSeconds)}
-          </>
-        )}
-      </div>
-
-      <div className="cm-frame">
-        {orphan ? (
-          <div className="cm-frame__missing">
-            <span>∿</span>
-            file missing on disk · {video.file}
-          </div>
-        ) : (
-          <>
-            <video
-              ref={player.videoRef}
-              className="cm-frame__video"
-              src={videoUrl(video.file)}
-              controls
-              playsInline
-              preload="auto"
-            />
-            <span className="cm-frame__time">{formatTime(player.currentTime)}</span>
-          </>
-        )}
-      </div>
-
-      <Strip
-        className="cm-strip--player"
-        duration={duration}
-        clips={own}
-        active={(c) => player.isLooping(c.startSeconds, c.endSeconds)}
-        dim={!!player.loop}
-        onClip={(c) => player.startLoop(c.startSeconds, c.endSeconds)}
-        onSeek={player.seek}
-        playhead={player.currentTime}
-        loop={player.loop}
-      />
-
-      <MarkDeck player={player} onSave={(input) => onSave(video, input)} stacked={phone} />
-
-      <div className="cm-clips">
-        <div className="cm-eyebrow">Clips on this video · {own.length}</div>
-        <table className="cm-table cm-table--clips">
-          <tbody>
-            {own.map((c) => (
-              <tr
-                key={c.id}
-                className={player.isLooping(c.startSeconds, c.endSeconds) ? "is-looping" : ""}
-              >
-                <td className="cm-mono">
-                  <button
-                    type="button"
-                    title="Loop this clip"
-                    onClick={() => player.startLoop(c.startSeconds, c.endSeconds)}
-                  >
-                    {formatTime(c.startSeconds)}
-                  </button>
-                </td>
-                <td className="cm-mono">
-                  <button
-                    type="button"
-                    title="Play from the end of this clip"
-                    onClick={() => player.seekAndPlay(c.endSeconds)}
-                  >
-                    {formatTime(c.endSeconds)}
-                  </button>
-                </td>
-                <td className="cm-table__name">{c.tags.join(" · ") || "untitled"}</td>
-                <td className="cm-table__note">{c.note}</td>
-                <td className="cm-table__rm">
-                  <button type="button" onClick={() => void onRemove(c)}>
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {own.length === 0 && (
-              <tr>
-                <td className="cm-none" colSpan={5}>
-                  No clips yet — mark IN and OUT to add one.
-                </td>
-              </tr>
+    <div className="cm-watch">
+      <div className="cm-watch__grid">
+        <div className="cm-watch__main">
+          <div className="cm-frame">
+            {orphan ? (
+              <div className="cm-frame__missing">
+                <span>∿</span>
+                file missing on disk · {video.file}
+              </div>
+            ) : (
+              <>
+                <video
+                  ref={player.videoRef}
+                  className="cm-frame__video"
+                  src={videoUrl(video.file)}
+                  controls
+                  playsInline
+                  preload="auto"
+                />
+                <span className="cm-frame__time">{formatTime(player.currentTime)}</span>
+              </>
             )}
-          </tbody>
-        </table>
-      </div>
+          </div>
 
-      {others.length > 0 && (
-        <div className="cm-clips">
-          <div className="cm-eyebrow">Same tags, other videos · {others.length}</div>
-          <table className="cm-table cm-table--clips">
-            <tbody>
-              {others.map(({ clip, video: rv }) => (
-                <tr
-                  key={`${rv.file}-${clip.id}`}
-                  className="is-link"
-                  onClick={() => onOpen(rv, clip)}
-                >
-                  <td className="cm-mono">{formatTime(clip.startSeconds)}</td>
-                  <td className="cm-mono">{formatTime(clip.endSeconds)}</td>
-                  <td className="cm-table__name">{clip.tags.join(" · ")}</td>
-                  <td className="cm-table__note">
-                    {folderLabel(dirname(rv.file))} › {basename(rv.file)}
-                  </td>
-                  <td />
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Strip
+            className="cm-strip--player"
+            duration={duration}
+            clips={own}
+            active={(c) => player.isLooping(c.startSeconds, c.endSeconds)}
+            dim={looping}
+            onClip={(c) => player.startLoop(c.startSeconds, c.endSeconds)}
+            onSeek={player.seek}
+            playhead={player.currentTime}
+            loop={player.loop}
+          />
+
+          {/* Always holds its line; only the opacity changes, so nothing below jumps. */}
+          <p className={"cm-loophint" + (looping ? " is-on" : "")} aria-hidden={!looping}>
+            Press <kbd>Esc</kbd> to stop looping
+          </p>
         </div>
-      )}
+
+        <aside className="cm-watch__side">
+          <section className="cm-panel">
+            <div className="cm-eyebrow">New clip</div>
+            <MarkDeck player={player} onSave={(input) => onSave(video, input)} />
+          </section>
+
+          <section>
+            <div className="cm-sec__head">
+              <span className="cm-eyebrow">Clips on this video · {own.length}</span>
+            </div>
+            <div className="cm-clist">
+              {own.map((c) => (
+                <div
+                  key={c.id}
+                  className={
+                    "cm-crow" + (player.isLooping(c.startSeconds, c.endSeconds) ? " is-looping" : "")
+                  }
+                >
+                  <div className="cm-crow__t">
+                    <button
+                      type="button"
+                      title="Loop this clip"
+                      onClick={() => player.startLoop(c.startSeconds, c.endSeconds)}
+                    >
+                      {formatTime(c.startSeconds)}
+                    </button>
+                    <button
+                      type="button"
+                      title="Play from the end of this clip"
+                      onClick={() => player.seekAndPlay(c.endSeconds)}
+                    >
+                      {formatTime(c.endSeconds)}
+                    </button>
+                  </div>
+                  <div className="cm-crow__body">
+                    <button
+                      type="button"
+                      className="cm-crow__name"
+                      title="Loop this clip"
+                      onClick={() => player.startLoop(c.startSeconds, c.endSeconds)}
+                    >
+                      {c.tags.join(" · ") || "untitled"}
+                    </button>
+                    {c.note && <div className="cm-crow__note">{c.note}</div>}
+                  </div>
+                  <div className="cm-crow__act">
+                    <button type="button" onClick={() => void onRemove(c)}>
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {own.length === 0 && (
+                <div className="cm-none">No clips yet — mark IN and OUT to add one.</div>
+              )}
+            </div>
+          </section>
+
+          {others.length > 0 && (
+            <section>
+              <div className="cm-sec__head">
+                <span className="cm-eyebrow">Same tags, other videos · {others.length}</span>
+              </div>
+              <div className="cm-nlist">
+                {others.map(({ clip, video: rv }) => {
+                  const d = stripDuration(rv.durationSeconds, [clip]);
+                  return (
+                    <button
+                      key={`${rv.file}-${clip.id}`}
+                      type="button"
+                      className="cm-next"
+                      onClick={() => onOpen(rv, clip)}
+                    >
+                      <span className="cm-next__thumb">
+                        {rv.thumbnail ? (
+                          <img src={rv.thumbnail} alt="" loading="lazy" />
+                        ) : (
+                          <span className="cm-card__nothumb" aria-hidden="true">
+                            ∿
+                          </span>
+                        )}
+                        <span className="cm-card__dur">
+                          {formatTime(clip.startSeconds)}–{formatTime(clip.endSeconds)}
+                        </span>
+                        <span className="cm-card__strip" aria-hidden="true">
+                          <i
+                            style={{
+                              left: `${(clip.startSeconds / d) * 100}%`,
+                              width: `${((clip.endSeconds - clip.startSeconds) / d) * 100}%`,
+                            }}
+                          />
+                        </span>
+                      </span>
+                      <span className="cm-next__body">
+                        <span className="cm-next__name">{clip.tags.join(" · ") || "untitled"}</span>
+                        <span className="cm-next__video">
+                          {folderLabel(dirname(rv.file))} › {basename(rv.file)}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+        </aside>
+
+        {/* Placeholder until the Source panel: folder and file name. */}
+        <div className="cm-winfo">
+          <h1 className="cm-winfo__title">{basename(video.file)}</h1>
+          <div className="cm-winfo__meta">{folderLabel(dirname(video.file))}</div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -171,11 +234,9 @@ export function PlayerPane({
 function MarkDeck({
   player,
   onSave,
-  stacked,
 }: {
   player: VideoPlayer;
   onSave: (input: ClipInput) => Promise<void>;
-  stacked: boolean;
 }) {
   const [mark, setMark] = useState<{ s: number | null; e: number | null }>({ s: null, e: null });
   const [tags, setTags] = useState("");
@@ -212,7 +273,7 @@ function MarkDeck({
   };
 
   return (
-    <div className={"cm-deck " + (stacked ? "cm-deck--stack" : "cm-deck--row")}>
+    <div className="cm-deck">
       <div className="cm-deck__marks">
         <button
           type="button"
