@@ -2,7 +2,7 @@
  * The shared pill input's pure core: suggestion indexes, suggestions and the state transition
  * behind every keystroke. PillInput.tsx is only the React shell around this.
  *
- * A field is configured by pill kind (Tag today; Dancer and folder next): each kind brings its
+ * A field is configured by pill kind (Dancer and Tag; folder next): each kind brings its
  * suggestion index, its normaliser and a label. `freeKind` is the kind typed text commits as.
  */
 
@@ -31,17 +31,44 @@ export interface PillKind {
 
 export interface PillConfig<K extends string = string> {
   kinds: Record<K, PillKind>;
-  /** The kind that typed (not picked) text commits as. */
-  freeKind: K;
+  /** The kind that typed (not picked) text commits as, fixed or decided from the text. */
+  freeKind: K | ((text: string) => K);
   /** Suggestions shown at most; 8 by default. */
   limit?: number;
 }
 
 const fold = (s: string) => s.toLowerCase();
 
-/** A field of Tag pills over a suggestion index (the create form; the search until Dancers land). */
+/** A field of Tag pills over a suggestion index (the create form). */
 export function tagField(index: Term[]): PillConfig<"tag"> {
   return { kinds: { tag: { label: "tag", index, normalize: normalizeTag } }, freeKind: "tag" };
+}
+
+/** A field of Dancer pills over a suggestion index (the create form, before Tags). */
+export function dancerField(index: Term[]): PillConfig<"dancer"> {
+  return { kinds: { dancer: { label: "dancer", index, normalize: normalizeDancer } }, freeKind: "dancer" };
+}
+
+/**
+ * The top-bar search: Dancer and Tag pills, suggested together and labelled by kind. Typed text
+ * becomes a Dancer pill when it is part of a known Dancer's name, otherwise a Tag pill.
+ */
+export function searchField(dancers: Term[], tags: Term[]): PillConfig<"dancer" | "tag"> {
+  return {
+    kinds: {
+      dancer: { label: "dancer", index: dancers, normalize: normalizeDancer },
+      tag: { label: "tag", index: tags, normalize: normalizeTag },
+    },
+    freeKind: (text) => {
+      const q = fold(text.trim());
+      return dancers.some((d) => fold(d.text).includes(q)) ? "dancer" : "tag";
+    },
+  };
+}
+
+/** A Dancer as the Store keeps it (ADR-0008): trimmed, spaces collapsed, capitalisation as typed. */
+export function normalizeDancer(raw: string): string {
+  return raw.trim().replace(/\s+/g, " ");
 }
 
 /** A Tag as the Store keeps it (ADR-0008): trimmed, spaces collapsed, lowercase. */
@@ -128,9 +155,12 @@ function addPill<K extends string>(config: PillConfig<K>, pills: Pill<K>[], kind
   return [...pills, { kind, text }];
 }
 
+const freeKindOf = <K extends string>(config: PillConfig<K>, text: string): K =>
+  typeof config.freeKind === "function" ? config.freeKind(text) : config.freeKind;
+
 /** Text left in the field becomes a pill: what Save does before it reads the pills. */
 export function commitDraft<K extends string>(config: PillConfig<K>, pills: Pill<K>[], draft: string): Pill<K>[] {
-  return addPill(config, pills, config.freeKind, draft);
+  return addPill(config, pills, freeKindOf(config, draft), draft);
 }
 
 /** The suggestions for a state's text, whether or not the list is open (arrows reopen it). */
@@ -155,7 +185,7 @@ export function pillStep<K extends string>(config: PillConfig<K>, state: PillSta
       const parts = event.text.split(",");
       const draft = parts.pop() ?? "";
       let pills = state.pills;
-      for (const part of parts) pills = addPill(config, pills, config.freeKind, part);
+      for (const part of parts) pills = commitDraft(config, pills, part);
       return done({ pills, draft, open: true, hi: -1 });
     }
     case "pick": {

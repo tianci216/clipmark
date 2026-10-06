@@ -50,3 +50,13 @@ export function sourceHost(url: string): string {
 export function folderLabel(path: string): string {
   return path === "" ? "Library Folder" : path;
 }
+
+/** Dancers as one line of text: "A & B" for a pair, "A, B, C" otherwise. */
+export function dancerLabel(dancers: string[]): string {
+  return dancers.length === 2 ? dancers.join(" & ") : dancers.join(", ");
+}
+
+/** A Clip in one line of plain text: Dancers, then Tags; "untitled" with neither. */
+export function clipLabel(clip: { dancers: string[]; tags: string[] }): string {
+  return [dancerLabel(clip.dancers), ...clip.tags].filter(Boolean).join(" · ") || "untitled";
+}

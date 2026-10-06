@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFeed, type FeedCard } from "../src/lib/feed";
+import { buildFeed, type FeedCard, type SearchPill } from "../src/lib/feed";
 import type { Clip, Download, Video } from "../src/lib/api";
 
 function video(hash: string, file: string, fileMtime: number | null, duration: number | null = 120): Video {
@@ -15,9 +15,12 @@ function video(hash: string, file: string, fileMtime: number | null, duration: n
   };
 }
 
-function clip(id: number, videoHash: string, file: string, startSeconds: number, tags: string[]): Clip {
-  return { id, videoHash, file, startSeconds, endSeconds: startSeconds + 5, note: "", tags };
+function clip(id: number, videoHash: string, file: string, startSeconds: number, tags: string[], dancers: string[] = []): Clip {
+  return { id, videoHash, file, startSeconds, endSeconds: startSeconds + 5, note: "", dancers, tags };
 }
+
+const tagPills = (...texts: string[]): SearchPill[] => texts.map((text) => ({ kind: "tag", text }));
+const dancer = (text: string): SearchPill => ({ kind: "dancer", text });
 
 function job(id: number, state: Download["state"], folder = "Classes"): Download {
   return { id, url: "https://x", folder, state, progress: 10, title: null, file: null, error: null, startedAt: null };
@@ -86,13 +89,13 @@ describe("buildFeed", () => {
     ];
 
     it("keeps only Videos with a matching Clip, matching AND across tokens by case-insensitive substring", () => {
-      const feed = buildFeed([swing, lindy, solo], cs, ["SWING", "fri"], []);
+      const feed = buildFeed([swing, lindy, solo], cs, tagPills("SWING", "fri"), []);
       expect(feed.filtering).toBe(true);
       expect(files(feed.cards)).toEqual([swing.file]);
     });
 
     it("counts matching of total Clips and lists the first three matches by start", () => {
-      const [card] = buildFeed([swing], cs, ["swingout"], []).cards;
+      const [card] = buildFeed([swing], cs, tagPills("swingout"), []).cards;
       if (card.kind !== "video") throw new Error("expected a video card");
       expect(card.matching).toBe(4);
       expect(card.total).toBe(5);
@@ -109,9 +112,36 @@ describe("buildFeed", () => {
     });
 
     it("is empty because of the filter when nothing matches", () => {
-      const feed = buildFeed([swing, lindy], cs, ["tango"], []);
+      const feed = buildFeed([swing, lindy], cs, tagPills("tango"), []);
       expect(feed.cards).toEqual([]);
       expect(feed.empty).toBe("filter");
+    });
+  });
+
+  describe("with Dancer and Tag pills", () => {
+    const cs = [
+      clip(1, "aaa", swing.file, 10, ["swing out"], ["Dax Hock", "Sarah Breck"]),
+      clip(2, "aaa", swing.file, 30, ["texas tommy"], ["Dax Hock"]),
+      clip(3, "bbb", lindy.file, 5, ["dax hock routine"], []),
+      clip(4, "ccc", solo.file, 5, ["swing out"], ["Naomi Uyama"]),
+    ];
+    const matched = (pills: SearchPill[]) =>
+      buildFeed([swing, lindy, solo], cs, pills, []).cards.flatMap((c) => (c.kind === "video" ? [...c.matchIds] : [])).sort();
+
+    it("matches a Dancer pill against Dancers only, by case-insensitive substring", () => {
+      expect(matched([dancer("dax")])).toEqual([1, 2]);
+      expect(matched([dancer("UYAMA")])).toEqual([4]);
+    });
+
+    it("matches a Tag pill against Tags only, never a Dancer's name", () => {
+      expect(matched(tagPills("dax"))).toEqual([3]);
+      expect(matched(tagPills("breck"))).toEqual([]);
+    });
+
+    it("needs every pill to match, across both kinds", () => {
+      expect(matched([dancer("dax"), ...tagPills("swing")])).toEqual([1]);
+      expect(matched([dancer("sarah"), dancer("dax hock")])).toEqual([1]);
+      expect(matched([dancer("naomi"), ...tagPills("tommy")])).toEqual([]);
     });
   });
 
@@ -148,8 +178,8 @@ describe("buildFeed with Downloads", () => {
 
   it("hides Download cards while a filter is active", () => {
     const cs = [clip(1, "bbb", lindy.file, 3, ["swing out"])];
-    const feed = buildFeed([lindy], cs, ["swing"], [job(1, "running")]);
+    const feed = buildFeed([lindy], cs, tagPills("swing"), [job(1, "running")]);
     expect(files(feed.cards)).toEqual([lindy.file]);
-    expect(buildFeed([lindy], cs, ["tango"], [job(1, "running")]).empty).toBe("filter");
+    expect(buildFeed([lindy], cs, tagPills("tango"), [job(1, "running")]).empty).toBe("filter");
   });
 });

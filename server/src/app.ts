@@ -453,7 +453,8 @@ export function createApp({
       startSeconds,
       endSeconds,
       note: typeof body.note === "string" ? body.note : "",
-      tags: Array.isArray(body.tags) ? body.tags.filter((t): t is string => typeof t === "string") : [],
+      tags: strings(body.tags),
+      dancers: strings(body.dancers),
     };
     // Only Videos in the current Library Folder can take Clips: the UI could not show
     // one on a hidden Video, and the response must never carry an absolute path.
@@ -523,4 +524,9 @@ export function createApp({
   }
 
   return app;
+}
+
+/** The strings in a JSON field that should be a list of them; anything else is dropped. */
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((t): t is string => typeof t === "string") : [];
 }

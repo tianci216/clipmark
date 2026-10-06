@@ -17,7 +17,7 @@ import {
 } from "./lib/api";
 import { applyAppearance, type Appearance } from "./lib/appearance";
 import type { DownloadControls } from "./lib/downloadControls";
-import { buildFeed } from "./lib/feed";
+import { buildFeed, type SearchPill } from "./lib/feed";
 import { FeedPane } from "./lib/FeedPane";
 import { displayName } from "./lib/format";
 import { MusicPane, MusicSearch } from "./lib/MusicPane";
@@ -28,7 +28,7 @@ import { Slide } from "./lib/Slide";
 import { readFlag, writeFlag } from "./lib/storedFlag";
 import { TabSwitch, type Tab } from "./lib/TabSwitch";
 import { PillInput } from "./lib/PillInput";
-import { buildTermIndex, tagField, type Pill } from "./lib/pills";
+import { buildTermIndex, searchField } from "./lib/pills";
 import { TopBar } from "./lib/TopBar";
 import { useAudioPlayer } from "./lib/useAudioPlayer";
 import { PHONE_QUERY, useMedia } from "./lib/useMedia";
@@ -60,7 +60,7 @@ function readTab(): Tab {
  * The app frame: one top bar (Clips | Music, search, Download, Settings) over a
  * double-width track holding the Clips page (the library feed, or the watch page for
  * a target Video) and the Music page side by side; switching tabs slides the track.
- * Selection state lives here: the tag filter, the target Video + loop Clip, whether
+ * Selection state lives here: the Dancer/Tag search pills, the target Video + loop Clip, whether
  * Settings covers the pages, and the feed's scroll position. The Music tab's library
  * state and the one audio player live here too, so music keeps playing on either tab.
  */
@@ -70,7 +70,7 @@ export function App() {
   const [folders, setFolders] = useState<string[]>([]);
   const [clips, setClips] = useState<Clip[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [tokens, setTokens] = useState<string[]>([]);
+  const [search, setSearch] = useState<SearchPill[]>([]);
   const [target, setTarget] = useState<Target | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   // Settings replaces the main pane / screen; leaving it restores whatever was there.
@@ -238,11 +238,13 @@ export function App() {
     [folders, downloads, scanning, handleStartDownload, handleRemoveDownload],
   );
 
-  const tagConfig = useMemo(() => tagField(buildTermIndex(clips.map((c) => c.tags))), [clips]);
-  const searchPills = useMemo(() => tokens.map((text): Pill<"tag"> => ({ kind: "tag", text })), [tokens]);
+  const searchConfig = useMemo(
+    () => searchField(buildTermIndex(clips.map((c) => c.dancers)), buildTermIndex(clips.map((c) => c.tags))),
+    [clips],
+  );
   const feed = useMemo(
-    () => buildFeed(videos, clips, tokens, downloads),
-    [videos, clips, tokens, downloads],
+    () => buildFeed(videos, clips, search, downloads),
+    [videos, clips, search, downloads],
   );
 
   const open = useCallback((video: Video, clip: Clip | null) => {
@@ -267,11 +269,10 @@ export function App() {
   );
 
   // The search sits in the top bar on every Clips page; filtering from the watch page returns to the feed.
-  const changeTokens = useCallback((next: string[]) => {
-    setTokens(next);
+  const changeSearch = useCallback((next: SearchPill[]) => {
+    setSearch(next);
     setTarget(null);
   }, []);
-  const changeSearchPills = useCallback((next: Pill<"tag">[]) => changeTokens(next.map((p) => p.text)), [changeTokens]);
 
   const handleSaved = useCallback(
     (saved: Settings) => {
@@ -355,7 +356,7 @@ export function App() {
       />
     </section>
   ) : (
-    <FeedPane feed={feed} tokens={tokens} downloads={downloadControls} scrollRef={feedScroll} onOpen={open} />
+    <FeedPane feed={feed} pills={search} downloads={downloadControls} scrollRef={feedScroll} onOpen={open} />
   );
 
   const musicPage = (
@@ -382,11 +383,11 @@ export function App() {
           ) : (
             <div className="cm-search" role="search">
               <PillInput
-                config={tagConfig}
-                pills={searchPills}
-                onPills={changeSearchPills}
-                placeholder="Search tags"
-                ariaLabel="Search tags"
+                config={searchConfig}
+                pills={search}
+                onPills={changeSearch}
+                placeholder="Search dancers or tags"
+                ariaLabel="Search dancers and tags"
               />
             </div>
           )

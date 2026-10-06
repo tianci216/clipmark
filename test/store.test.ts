@@ -18,7 +18,7 @@ function clipSeed() {
 }
 
 describe("Store schema (ADR-0004)", () => {
-  it("creates videos, clips, clip_tags and video_sources tables", () => {
+  it("creates videos, clips, clip_tags, clip_dancers (ADR-0008) and video_sources tables", () => {
     const { db } = openStore();
     const tables = db
       .prepare(
@@ -26,7 +26,7 @@ describe("Store schema (ADR-0004)", () => {
       )
       .all()
       .map((r) => (r as { name: string }).name);
-    expect(tables).toEqual(["clip_tags", "clips", "settings", "video_sources", "videos"]);
+    expect(tables).toEqual(["clip_dancers", "clip_tags", "clips", "settings", "video_sources", "videos"]);
   });
 
   it("gives clips the ADR-0004 columns", () => {

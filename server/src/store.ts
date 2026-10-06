@@ -8,6 +8,8 @@ export interface Clip {
   startSeconds: number;
   endSeconds: number;
   note: string;
+  /** Who dances in it (ADR-0008): capitalisation as typed, deduplicated case-insensitively. */
+  dancers: string[];
   tags: string[];
 }
 
@@ -40,6 +42,25 @@ export interface ClipInput {
   endSeconds: number;
   note: string;
   tags: string[];
+  dancers?: string[];
+}
+
+/**
+ * A Clip's Dancers as stored (ADR-0008): trimmed, internal whitespace collapsed to one space,
+ * empties dropped, duplicates removed case-insensitively keeping the first spelling given.
+ * Capitalisation is kept ("deVries" stays "deVries").
+ */
+export function normalizeDancers(raw: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const d of raw) {
+    const name = d.trim().replace(/\s+/g, " ");
+    const key = name.toLowerCase();
+    if (name === "" || seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
 }
 
 /**
@@ -82,6 +103,13 @@ CREATE TABLE IF NOT EXISTS clip_tags (
   FOREIGN KEY (clip_id) REFERENCES clips(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS clip_dancers (
+  clip_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  PRIMARY KEY (clip_id, name),
+  FOREIGN KEY (clip_id) REFERENCES clips(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -102,6 +130,7 @@ CREATE TABLE IF NOT EXISTS video_sources (
 
 CREATE INDEX IF NOT EXISTS idx_clips_video_hash ON clips(video_hash);
 CREATE INDEX IF NOT EXISTS idx_clip_tags_tag ON clip_tags(tag);
+CREATE INDEX IF NOT EXISTS idx_clip_dancers_name ON clip_dancers(name);
 `;
 
 interface ClipRow {
@@ -208,7 +237,7 @@ export class Store {
   }
 
   createClip(videoHash: string, input: ClipInput): Clip {
-    const { startSeconds, endSeconds, note, tags } = input;
+    const { startSeconds, endSeconds, note, tags, dancers = [] } = input;
     if (!(endSeconds > startSeconds)) {
       throw new Error("end_seconds must be greater than start_seconds");
     }
@@ -218,9 +247,13 @@ export class Store {
     const insertTag = this.db.prepare(
       "INSERT INTO clip_tags (clip_id, tag) VALUES (?, ?)",
     );
+    const insertDancer = this.db.prepare(
+      "INSERT INTO clip_dancers (clip_id, name) VALUES (?, ?)",
+    );
     const insert = this.db.transaction(() => {
       const info = insertClip.run(videoHash, startSeconds, endSeconds, note);
       const id = Number(info.lastInsertRowid);
+      for (const name of normalizeDancers(dancers)) insertDancer.run(id, name);
       for (const tag of normalizeTags(tags)) insertTag.run(id, tag);
       return id;
     });
@@ -240,7 +273,7 @@ export class Store {
       )
       .get(id) as ClipRow | undefined;
     if (!row) return undefined;
-    return toClip(row, this.loadTags([id]).get(id) ?? []);
+    return this.withLists([row])[0];
   }
 
   getClips(): Clip[] {
@@ -251,8 +284,7 @@ export class Store {
          ORDER BY c.id`,
       )
       .all() as ClipRow[];
-    const tags = this.loadTags(rows.map((r) => r.id));
-    return rows.map((r) => toClip(r, tags.get(r.id) ?? []));
+    return this.withLists(rows);
   }
 
   getClipsByVideo(videoHash: string): Clip[] {
@@ -264,8 +296,7 @@ export class Store {
          ORDER BY c.start_seconds, c.id`,
       )
       .all(videoHash) as ClipRow[];
-    const tags = this.loadTags(rows.map((r) => r.id));
-    return rows.map((r) => toClip(r, tags.get(r.id) ?? []));
+    return this.withLists(rows);
   }
 
   getVideo(hash: string): Video | undefined {
@@ -364,27 +395,43 @@ export class Store {
     return rows.map((r) => r.tag);
   }
 
-  private loadTags(clipIds: number[]): Map<number, string[]> {
+  /** Every distinct Dancer name, A-Z ignoring case. */
+  getDancers(): string[] {
+    const rows = this.db
+      .prepare("SELECT DISTINCT name FROM clip_dancers ORDER BY name COLLATE NOCASE")
+      .all() as { name: string }[];
+    return rows.map((r) => r.name);
+  }
+
+  private withLists(rows: ClipRow[]): Clip[] {
+    const ids = rows.map((r) => r.id);
+    const tags = this.loadList("clip_tags", "tag", ids);
+    const dancers = this.loadList("clip_dancers", "name", ids);
+    return rows.map((r) => toClip(r, dancers.get(r.id) ?? [], tags.get(r.id) ?? []));
+  }
+
+  /** One (clip_id, value) relation's values per Clip, in insertion order. */
+  private loadList(table: "clip_tags" | "clip_dancers", column: "tag" | "name", clipIds: number[]): Map<number, string[]> {
     const result = new Map<number, string[]>();
     if (clipIds.length === 0) return result;
     const placeholders = clipIds.map(() => "?").join(",");
     const rows = this.db
       .prepare(
-        `SELECT clip_id, tag FROM clip_tags
+        `SELECT clip_id, ${column} AS value FROM ${table}
          WHERE clip_id IN (${placeholders})
          ORDER BY rowid`,
       )
-      .all(...clipIds) as { clip_id: number; tag: string }[];
+      .all(...clipIds) as { clip_id: number; value: string }[];
     for (const row of rows) {
       const list = result.get(row.clip_id) ?? [];
-      list.push(row.tag);
+      list.push(row.value);
       result.set(row.clip_id, list);
     }
     return result;
   }
 }
 
-function toClip(row: ClipRow, tags: string[]): Clip {
+function toClip(row: ClipRow, dancers: string[], tags: string[]): Clip {
   return {
     id: row.id,
     videoHash: row.video_hash,
@@ -392,6 +439,7 @@ function toClip(row: ClipRow, tags: string[]): Clip {
     startSeconds: row.start_seconds,
     endSeconds: row.end_seconds,
     note: row.note,
+    dancers,
     tags,
   };
 }

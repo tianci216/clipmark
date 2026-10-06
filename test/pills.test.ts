@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildTermIndex,
   commitDraft,
+  dancerField,
+  normalizeDancer,
   normalizeTag,
+  searchField,
   pillStep,
   suggest,
   type Pill,
@@ -190,5 +193,43 @@ describe("commitDraft", () => {
     const pills = [{ kind: "tag" as const, text: "tuck" }];
     expect(commitDraft(config, pills, "  ")).toBe(pills);
     expect(commitDraft(config, pills, "Tuck")).toBe(pills);
+  });
+});
+
+describe("Dancer fields", () => {
+  it("keep a Dancer's capitalisation, trimming and collapsing spaces only", () => {
+    expect(normalizeDancer("  Remy   Kouakou\tKouame ")).toBe("Remy Kouakou Kouame");
+    expect(normalizeDancer("deVries")).toBe("deVries");
+  });
+
+  it("commit typed names as Dancer pills, deduplicated ignoring case", () => {
+    const config = dancerField(buildTermIndex([["Dax Hock"]]));
+    const pills = commitDraft(config, [{ kind: "dancer", text: "Dax Hock" }], " dax  hock ");
+    expect(pills).toEqual([{ kind: "dancer", text: "Dax Hock" }]);
+    expect(commitDraft(config, pills, "Sarah Breck")).toEqual([
+      { kind: "dancer", text: "Dax Hock" },
+      { kind: "dancer", text: "Sarah Breck" },
+    ]);
+  });
+});
+
+describe("searchField", () => {
+  const config = searchField(
+    buildTermIndex([["Dax Hock", "Sarah Breck"], ["Dax Hock"]]),
+    buildTermIndex([["swing out"], ["dax routine"]]),
+  );
+
+  it("suggests Dancers and Tags together, labelled by kind", () => {
+    expect(suggest(config, "dax", [])).toEqual([
+      { kind: "dancer", text: "Dax Hock", count: 2 },
+      { kind: "tag", text: "dax routine", count: 1 },
+    ]);
+    expect(config.kinds.dancer.label).toBe("dancer");
+    expect(config.kinds.tag.label).toBe("tag");
+  });
+
+  it("commits typed text as a Dancer when it is part of a known Dancer's name, else as a Tag", () => {
+    expect(commitDraft(config, [], "Breck")).toEqual([{ kind: "dancer", text: "Breck" }]);
+    expect(commitDraft(config, [], "Swing")).toEqual([{ kind: "tag", text: "swing" }]);
   });
 });

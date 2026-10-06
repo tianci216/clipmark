@@ -2,9 +2,9 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import type { Clip, ClipInput, Video } from "./api";
 import { videoUrl } from "./api";
 import { basename, dirname, displayName, folderLabel, formatTime, formatUploadDate, sourceHost } from "./format";
-import { PillInput, plainText, TagPills } from "./PillInput";
+import { ClipName, PillInput, plainText } from "./PillInput";
 import type { Pill, PillConfig } from "./pills";
-import { buildTermIndex, commitDraft, tagField } from "./pills";
+import { buildTermIndex, commitDraft, dancerField, tagField } from "./pills";
 import { railFor } from "./rail";
 import { Strip, stripDuration } from "./Strip";
 import type { VideoPlayer } from "./useVideoPlayer";
@@ -14,7 +14,7 @@ import { fullscreenElement, isTypingTarget, toggleFullscreen, watchKeyAction } f
 /**
  * The watch page, two columns. Left: native video, clip strip (a Clip's bar Loops it), the
  * Loop hint and the video info. Right (about 420 px): the mark deck, "Clips on this video"
- * and "Same tags, other videos". Narrow widths stack them: video, strip, hint, deck, Clips,
+ * and "Same dancers or tags". Narrow widths stack them: video, strip, hint, deck, Clips,
  * related, info. Keys: Escape stops the Loop without seeking; F toggles native fullscreen.
  * Mount it with a key of file + loop clip so the loop state machine restarts per target.
  */
@@ -71,8 +71,9 @@ export function PlayerPane({
     return () => window.removeEventListener("keydown", onKey);
   }, [active, looping, stopLoop, videoRef]);
 
-  const { own, others } = useMemo(() => railFor(video, videos, clips), [video, videos, clips]);
+  const { own, related } = useMemo(() => railFor(video, videos, clips), [video, videos, clips]);
   const tagConfig = useMemo(() => tagField(buildTermIndex(clips.map((c) => c.tags))), [clips]);
+  const dancerConfig = useMemo(() => dancerField(buildTermIndex(clips.map((c) => c.dancers))), [clips]);
   const duration = player.duration > 0 ? player.duration : stripDuration(video.durationSeconds, own);
 
   return (
@@ -121,7 +122,12 @@ export function PlayerPane({
         <aside className="cm-watch__side">
           <section className="cm-panel">
             <div className="cm-eyebrow">New clip</div>
-            <MarkDeck player={player} tagConfig={tagConfig} onSave={(input) => onSave(video, input)} />
+            <MarkDeck
+              player={player}
+              dancerConfig={dancerConfig}
+              tagConfig={tagConfig}
+              onSave={(input) => onSave(video, input)}
+            />
           </section>
 
           <section>
@@ -159,7 +165,7 @@ export function PlayerPane({
                       title="Loop this clip"
                       onClick={() => player.startLoop(c.startSeconds, c.endSeconds)}
                     >
-                      {c.tags.length ? <TagPills tags={c.tags} /> : <span className="cm-crow__none">untitled</span>}
+                      <ClipName clip={c} />
                     </button>
                     {c.note && <div className="cm-crow__note">{c.note}</div>}
                   </div>
@@ -176,13 +182,13 @@ export function PlayerPane({
             </div>
           </section>
 
-          {others.length > 0 && (
+          {related.length > 0 && (
             <section>
               <div className="cm-sec__head">
-                <span className="cm-eyebrow">Same tags, other videos · {others.length}</span>
+                <span className="cm-eyebrow">Same dancers or tags · {related.length}</span>
               </div>
               <div className="cm-nlist">
-                {others.map(({ clip, video: rv }) => {
+                {related.map(({ clip, video: rv }) => {
                   const d = stripDuration(rv.durationSeconds, [clip]);
                   return (
                     <button
@@ -212,7 +218,9 @@ export function PlayerPane({
                         </span>
                       </span>
                       <span className="cm-next__body">
-                        <span className="cm-next__name">{clip.tags.join(" · ") || "untitled"}</span>
+                        <span className="cm-next__name">
+                          <ClipName clip={clip} />
+                        </span>
                         <span className="cm-next__video">{displayName(rv)}</span>
                       </span>
                     </button>
@@ -297,14 +305,18 @@ function WatchInfo({ video }: { video: Video }) {
 
 function MarkDeck({
   player,
+  dancerConfig,
   tagConfig,
   onSave,
 }: {
   player: VideoPlayer;
+  dancerConfig: PillConfig<"dancer">;
   tagConfig: PillConfig<"tag">;
   onSave: (input: ClipInput) => Promise<void>;
 }) {
   const [mark, setMark] = useState<{ s: number | null; e: number | null }>({ s: null, e: null });
+  const [dancers, setDancers] = useState<Pill<"dancer">[]>([]);
+  const [dancerDraft, setDancerDraft] = useState("");
   const [tags, setTags] = useState<Pill<"tag">[]>([]);
   const [tagDraft, setTagDraft] = useState("");
   const [note, setNote] = useState("");
@@ -320,8 +332,11 @@ function MarkDeck({
       setError("The clip has to end after it starts.");
       return;
     }
-    // Text still in the Tags field counts: it becomes a pill before saving.
+    // Text still in the Dancers or Tags field counts: it becomes a pill before saving.
+    const allDancers = commitDraft(dancerConfig, dancers, dancerDraft);
     const allTags = commitDraft(tagConfig, tags, tagDraft);
+    setDancers(allDancers);
+    setDancerDraft("");
     setTags(allTags);
     setTagDraft("");
     setSaving(true);
@@ -331,9 +346,11 @@ function MarkDeck({
         startSeconds: mark.s,
         endSeconds: mark.e,
         note: note.trim(),
+        dancers: allDancers.map((p) => p.text),
         tags: allTags.map((p) => p.text),
       });
       setMark({ s: null, e: null });
+      setDancers([]);
       setTags([]);
       setNote("");
     } catch (err) {
@@ -366,6 +383,14 @@ function MarkDeck({
         <span className="cm-deck__live cm-mono">live {formatTime(player.currentTime)}</span>
       </div>
       <div className="cm-deck__fields">
+        <PillInput
+          config={dancerConfig}
+          pills={dancers}
+          onPills={setDancers}
+          draft={dancerDraft}
+          onDraft={setDancerDraft}
+          placeholder="Dancers"
+        />
         <PillInput
           config={tagConfig}
           pills={tags}

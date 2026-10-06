@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { Clip, Video } from "./api";
 import type { DownloadControls } from "./downloadControls";
-import { cardMeta, type DownloadCard, type Feed, type VideoCard } from "./feed";
-import { displayName, folderLabel, formatTime } from "./format";
+import { cardMeta, type DownloadCard, type Feed, type SearchPill, type VideoCard } from "./feed";
+import { clipLabel, displayName, folderLabel, formatTime } from "./format";
 import { stripDuration } from "./Strip";
 
 /** A running Download with no progress for this long is probably waiting on the Mac's Keychain prompt. */
@@ -16,13 +16,13 @@ const ERROR_LINES = 4;
  */
 export function FeedPane({
   feed,
-  tokens,
+  pills,
   downloads,
   scrollRef,
   onOpen,
 }: {
   feed: Feed;
-  tokens: string[];
+  pills: SearchPill[];
   downloads: DownloadControls;
   /** Stores the feed's scroll position so it survives a trip to the watch page. */
   scrollRef: MutableRefObject<number>;
@@ -49,7 +49,7 @@ export function FeedPane({
       {feed.empty ? (
         <div className="cm-feed__empty">
           {feed.empty === "filter"
-            ? `No clips match ${tokens.join(" + ")}.`
+            ? `No clips match ${pills.map((p) => p.text).join(" + ")}.`
             : "No videos in the library yet. Download one, or add files to the Library Folder."}
         </div>
       ) : (
@@ -142,7 +142,7 @@ function VideoCardView({
               <li key={c.id}>
                 <button type="button" onClick={() => onOpen(video, c)}>
                   <span className="cm-mono">{formatTime(c.startSeconds)}</span>
-                  <span>{c.tags.join(" · ") || "untitled"}</span>
+                  <span>{clipLabel(c)}</span>
                 </button>
               </li>
             ))}
